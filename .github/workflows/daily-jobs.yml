@@ -26,5 +26,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           EMAIL: ${{ secrets.EMAIL }}
+          TOEMAIL: ${{ secrets.TOEMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-        run: python daily_cpp_jobs_digest_v4.py
+        run: python daily_cpp_jobs_digest.py
