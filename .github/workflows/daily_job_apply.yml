@@ -1,0 +1,64 @@
+name: Daily C++ Job Auto Apply
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # 9:00 AM IST (UTC+5:30)
+  workflow_dispatch:        # Manual trigger
+
+jobs:
+  apply-jobs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wkhtmltopdf  # For PDF generation
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create necessary directories
+        run: |
+          mkdir -p custom_resumes
+          mkdir -p logs
+      
+      - name: Run Job Hunter
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          EMAIL: ${{ secrets.EMAIL }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+        run: |
+          python daily_job_apply.py 2>&1 | tee logs/daily_$(date +'%Y%m%d').log
+      
+      - name: Upload application logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-logs
+          path: |
+            logs/
+            dashboard.txt
+            applied_jobs.json
+            responses.json
+            custom_resumes/
+      
+      - name: Commit and push tracker files
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add applied_jobs.json responses.json dashboard.txt
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update job application trackers [skip ci]"
+          git push
