@@ -2,8 +2,8 @@ name: Daily C++ Job Auto Apply
 
 on:
   schedule:
-    - cron: "30 3 * * *"   # 9:00 AM IST (UTC+5:30)
-  workflow_dispatch:        # Manual trigger
+    - cron: "30 3 * * *"   # 9:00 AM IST
+  workflow_dispatch:
 
 jobs:
   apply-jobs:
@@ -23,7 +23,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wkhtmltopdf  # For PDF generation
+          sudo apt-get install -y wkhtmltopdf
       
       - name: Install Python dependencies
         run: |
@@ -34,6 +34,11 @@ jobs:
         run: |
           mkdir -p custom_resumes
           mkdir -p logs
+          
+          # Create initial files if they don't exist
+          if [ ! -f applied_jobs.json ]; then echo "[]" > applied_jobs.json; fi
+          if [ ! -f responses.json ]; then echo "{}" > responses.json; fi
+          if [ ! -f dashboard.txt ]; then echo "# Dashboard" > dashboard.txt; fi
       
       - name: Run Job Hunter
         env:
@@ -42,7 +47,7 @@ jobs:
           EMAIL: ${{ secrets.EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
         run: |
-          python daily_job_apply.py 2>&1 | tee logs/daily_$(date +'%Y%m%d').log
+          python daily_job_apply.py 2>&1 | tee logs/daily_$(date +'%Y%m%d_%H%M%S').log
       
       - name: Upload application logs
         uses: actions/upload-artifact@v4
@@ -59,6 +64,16 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add applied_jobs.json responses.json dashboard.txt
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update job application trackers [skip ci]"
-          git push
+          
+          # Only add files that exist
+          if [ -f applied_jobs.json ]; then git add applied_jobs.json; fi
+          if [ -f responses.json ]; then git add responses.json; fi
+          if [ -f dashboard.txt ]; then git add dashboard.txt; fi
+          
+          # Only commit if there are changes
+          if ! git diff --quiet || ! git diff --staged --quiet; then
+            git commit -m "Update job application trackers [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
