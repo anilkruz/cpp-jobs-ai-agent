@@ -1,4 +1,4 @@
-# features.py - All new features in one file
+# features.py - All new features in one file (No Tavily)
 
 import json
 import re
@@ -18,7 +18,7 @@ class AdvancedFeatures:
         
         responses = self.hunter.responses
         if not responses:
-            return "No data yet"
+            return {"message": "No data yet", "total_applications": 0}
         
         total = len(responses)
         
@@ -61,92 +61,58 @@ class AdvancedFeatures:
         
         return analytics
     
-    # ============= FEATURE 2: COMPANY RESEARCH =============
+    # ============= FEATURE 2: COMPANY RESEARCH (No Tavily) =============
     def research_company(self, company_name):
-        """Deep research on target company"""
+        """Deep research on target company using OpenAI only"""
         
-        print(f"🔍 Researching {company_name}...")
+        print(f"🔍 Researching {company_name} using AI...")
         
-        queries = [
-            f"{company_name} tech stack blog 2026",
-            f"{company_name} engineering culture glassdoor",
-            f"{company_name} interview process leetcode",
-            f"{company_name} funding valuation latest",
-            f"{company_name} C++ github repositories"
-        ]
-        
-        research_data = {}
-        for query in queries:
-            try:
-                results = self.hunter.tavily.search(query, max_results=2)
-                research_data[query] = [r['content'][:500] for r in results.get('results', [])]
-            except:
-                research_data[query] = ["No data found"]
-        
-        # AI Summary
+        # Use OpenAI to generate company research based on public knowledge
         prompt = f"""
-        Summarize key findings about {company_name} for interview prep:
+        Provide detailed research about {company_name} for interview preparation:
         
-        Tech Stack: {research_data.get(f"{company_name} tech stack blog 2026", ["N/A"])}
-        Culture: {research_data.get(f"{company_name} engineering culture glassdoor", ["N/A"])}
-        Interview: {research_data.get(f"{company_name} interview process leetcode", ["N/A"])}
-        Financials: {research_data.get(f"{company_name} funding valuation latest", ["N/A"])}
-        Code: {research_data.get(f"{company_name} C++ github repositories", ["N/A"])}
+        Include:
+        1. Tech Stack - What programming languages, frameworks, tools they use
+        2. Engineering Culture - Work-life balance, agile practices, remote work
+        3. Interview Process - Typical rounds, difficulty level, common questions
+        4. Company Health - Recent funding, growth, market position
+        5. Tips for C++ developers interviewing at {company_name}
         
-        Format:
-        1. Tech Stack (C++ version, frameworks)
-        2. Culture & Work-life balance
-        3. Interview Process (rounds, difficulty)
-        4. Company Health (funding, growth)
-        5. Tips for interview
+        Format with clear sections and bullet points.
+        Be specific and practical for interview prep.
         """
         
         summary = self.hunter._get_ai_response(prompt)
         
         # Save research
-        research_file = f"research_{company_name.lower().replace(' ', '_')}.json"
+        research_file = f"research_{company_name.lower().replace(' ', '_')}.txt"
         with open(research_file, 'w') as f:
-            json.dump({
-                'company': company_name,
-                'date': datetime.now().strftime('%Y-%m-%d'),
-                'summary': summary,
-                'raw_data': research_data
-            }, f, indent=2)
+            f.write(f"Company Research: {company_name}\n")
+            f.write(f"Date: {datetime.now().strftime('%Y-%m-%d')}\n")
+            f.write("="*50 + "\n\n")
+            f.write(summary)
         
+        print(f"✅ Research saved to {research_file}")
         return summary
     
-    # ============= FEATURE 3: COMPETITOR TRACKING =============
+    # ============= FEATURE 3: COMPETITOR TRACKING (No Tavily) =============
     def track_competitors(self):
-        """Track market trends and competitor activities"""
+        """Track market trends using AI knowledge"""
         
-        queries = [
-            "C++ developer salary trends Bangalore 2026",
-            "top paying companies for C++ engineers India",
-            "distributed systems jobs remote Bangalore",
-            "how to get 50 LPA package C++ developer",
-            "C++14 C++17 interview questions 2026"
-        ]
+        print("📈 Analyzing market trends using AI...")
         
-        trends = []
-        for query in queries:
-            try:
-                results = self.hunter.tavily.search(query, max_results=2)
-                trends.extend([r['content'][:300] for r in results.get('results', [])])
-            except:
-                continue
+        prompt = """
+        Analyze current market trends for C++ developers in India (2026):
         
-        # AI Analysis
-        prompt = f"""
-        Analyze these market trends for C++ developers:
+        Provide:
+        1. Current salary range for 6-8 years experience C++ developers in Bangalore (in LPA)
+        2. Top 10 paying companies for C++ engineers in India
+        3. Most in-demand C++ skills right now
+        4. Remote work trends for C++ developers
+        5. 5 actionable insights for a C++ developer targeting 40-50 LPA package
         
-        {chr(10).join(trends[:5])}
-        
-        Give:
-        1. Current salary range for 6-8 years C++ (in LPA)
-        2. Top 5 paying companies
-        3. Most in-demand skills
-        4. Remote work trends
-        5. 3 actionable insights for job search
+        Base this on general industry knowledge and trends.
+        Be specific with numbers and company names.
         """
         
         analysis = self.hunter._get_ai_response(prompt)
@@ -155,10 +121,10 @@ class AdvancedFeatures:
         with open('competitor_trends.json', 'w') as f:
             json.dump({
                 'date': datetime.now().strftime('%Y-%m-%d'),
-                'analysis': analysis,
-                'raw_trends': trends
+                'analysis': analysis
             }, f, indent=2)
         
+        print("✅ Competitor analysis saved to competitor_trends.json")
         return analysis
     
     # ============= FEATURE 4: ADVANCED DASHBOARD =============
@@ -167,6 +133,10 @@ class AdvancedFeatures:
         
         analytics = self.response_analytics()
         responses = self.hunter.responses
+        
+        if analytics.get('total_applications', 0) == 0:
+            print("⚠️ No data yet for advanced dashboard")
+            return
         
         # Prepare data for charts
         dates = []
@@ -303,7 +273,8 @@ class AdvancedFeatures:
                 // Load competitor data
                 fetch('competitor_trends.json')
                     .then(r => r.json())
-                    .then(d => document.getElementById('competitorData').innerHTML = d.analysis.replace(/\\n/g, '<br>'));
+                    .then(d => document.getElementById('competitorData').innerHTML = d.analysis.replace(/\\n/g, '<br>'))
+                    .catch(e => document.getElementById('competitorData').innerHTML = 'Market insights will appear here after Monday analysis');
             </script>
         </body>
         </html>
@@ -314,39 +285,32 @@ class AdvancedFeatures:
         
         print("✅ Advanced dashboard generated: advanced_dashboard.html")
     
-    # ============= FEATURE 5: AUTO-APPLY IMPROVEMENTS =============
+    # ============= FEATURE 5: AUTO-APPLY IMPROVEMENTS (No Tavily) =============
     def improved_job_search(self):
-        """Better job search with fintech focus"""
+        """Better job search suggestions using AI"""
         
-        # Priority companies for high package
-        priority_companies = [
-            'goldman sachs', 'jpmorgan', 'morgan stanley', 'blackrock',
-            'jump trading', 'tower research', 'optiver', 'cisco', 'microsoft',
-            'google', 'amazon', 'uber', 'salesforce', 'oracle'
-        ]
+        print("🎯 Generating premium job search suggestions...")
         
-        # Premium keywords
-        premium_keywords = [
-            'low latency', 'high frequency', 'trading', 'fintech',
-            'quant', 'hft', 'core banking', 'payment gateway',
-            'distributed systems', 'real time', 'high throughput'
-        ]
+        prompt = """
+        Suggest 10 specific job search queries for a C++ developer targeting 40-50 LPA packages:
         
-        all_jobs = []
+        Focus on:
+        - Fintech companies in Bangalore
+        - Low latency systems roles
+        - Distributed systems positions
+        - High-frequency trading firms
         
-        # Search fintech first
-        for keyword in premium_keywords[:3]:
-            query = f"site:linkedin.com/jobs {keyword} C++ Bangalore"
-            try:
-                results = self.hunter.tavily.search(query, max_results=3)
-                for r in results.get('results', []):
-                    job = self.hunter.extract_job_details(r.get('content', ''), r.get('url', ''))
-                    if job['company'].lower() in [c.lower() for c in priority_companies]:
-                        job['priority'] = '🔥 HIGH PRIORITY'
-                    else:
-                        job['priority'] = '📌 Standard'
-                    all_jobs.append(job)
-            except:
-                continue
+        Format each as: "site:linkedin.com/jobs [keywords] Bangalore"
+        Also list target companies with their typical C++ roles.
+        """
         
-        return all_jobs
+        suggestions = self.hunter._get_ai_response(prompt)
+        
+        # Save suggestions
+        with open('job_search_suggestions.txt', 'w') as f:
+            f.write("🎯 Premium Job Search Suggestions\n")
+            f.write("="*40 + "\n\n")
+            f.write(suggestions)
+        
+        print("✅ Job search suggestions saved to job_search_suggestions.txt")
+        return suggestions
