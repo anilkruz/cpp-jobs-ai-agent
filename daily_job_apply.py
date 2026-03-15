@@ -21,14 +21,13 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib import colors
 import validate_email_address
-from emailsherlock import validate_single_email
+# from emailsherlock import validate_single_email  # Commented out - using DNS only
 from features import AdvancedFeatures
 
 # Load environment variables
 load_dotenv()
 
 class JobHunter3000:
-    self.advanced = AdvancedFeatures(self)
     def __init__(self):
         """Initialize all clients and configurations"""
         # API Clients
@@ -77,6 +76,9 @@ class JobHunter3000:
         self.validated_emails = self._load_json(self.valid_emails_file, {})
         self.interviews = self._load_json(self.interviews_file, [])
         self.learning_tasks = self._load_json(self.learning_tasks_file, {})
+        
+        # Initialize advanced features
+        self.advanced = AdvancedFeatures(self)
         
         # Email blacklist - known invalid domains
         self.blacklist_domains = [
@@ -133,7 +135,7 @@ class JobHunter3000:
             print(f"⚠️ AI Error: {e}")
             return ""
     
-    # ============= FEATURE 1: EMAIL VALIDATION (ZERO BOUNCE) =============
+    # ============= EMAIL VALIDATION (ZERO BOUNCE) =============
     def validate_email_ultimate(self, email: str, company: str) -> Dict:
         """
         Ultimate email validation with multiple checks
@@ -166,38 +168,21 @@ class JobHunter3000:
             result['confidence'] = 30
             result['reason'] = 'Generic email prefix'
         
-        # Check 4: DNS MX records
+        # Check 4: DNS MX records (primary validation)
         try:
             mx_records = dns.resolver.resolve(domain, 'MX')
-            if not mx_records:
-                result['reason'] = 'No MX records found'
+            if mx_records:
+                result['valid'] = True
+                result['confidence'] = 80
+                result['reason'] = 'Valid - MX records found'
                 return result
         except Exception as e:
-            result['reason'] = f'DNS lookup failed: {str(e)}'
+            result['reason'] = f'DNS validation failed: {str(e)}'
             return result
         
-        # Check 5: EmailSherlock validation
-        try:
-            sherlock_result = validate_single_email(email, verbose=False)
-            confidence = sherlock_result.get('confidence_score', 0)
-            
-            if confidence >= 80:
-                result['valid'] = True
-                result['confidence'] = confidence
-                result['reason'] = 'Valid - confirmed by EmailSherlock'
-                return result
-            elif confidence >= 50:
-                result['confidence'] = confidence
-                result['reason'] = 'Questionable - needs review'
-                return result
-            else:
-                result['reason'] = f'Low confidence ({confidence}%)'
-                return result
-        except Exception as e:
-            result['reason'] = f'Sherlock validation failed: {str(e)}'
-            return result
+        return result
     
-    # ============= FEATURE 2: FIND HUMAN EMAILS FROM LINKEDIN =============
+    # ============= FIND HUMAN EMAILS FROM LINKEDIN =============
     def find_human_emails_from_linkedin(self, job: Dict) -> List[Dict]:
         """
         Extract human emails from LinkedIn job posting
@@ -232,25 +217,28 @@ class JobHunter3000:
         names = re.findall(name_pattern, content, re.IGNORECASE)
         
         for name in names[:3]:
-            first, last = name.lower().split()
-            company_clean = company.lower().replace(' ', '')
-            
-            email_formats = [
-                f"{first}.{last}@{company_clean}.com",
-                f"{first}@{company_clean}.com",
-                f"{first[0]}{last}@{company_clean}.com"
-            ]
-            
-            for email in email_formats:
-                validation = self.validate_email_ultimate(email, company)
-                if validation['valid']:
-                    results.append({
-                        'email': email,
-                        'name': name,
-                        'confidence': validation['confidence'],
-                        'source': 'generated_from_name'
-                    })
-                    break
+            try:
+                first, last = name.lower().split()
+                company_clean = company.lower().replace(' ', '')
+                
+                email_formats = [
+                    f"{first}.{last}@{company_clean}.com",
+                    f"{first}@{company_clean}.com",
+                    f"{first[0]}{last}@{company_clean}.com"
+                ]
+                
+                for email in email_formats:
+                    validation = self.validate_email_ultimate(email, company)
+                    if validation['valid']:
+                        results.append({
+                            'email': email,
+                            'name': name,
+                            'confidence': validation['confidence'],
+                            'source': 'generated_from_name'
+                        })
+                        break
+            except:
+                continue
         
         # Strategy 3: Search LinkedIn for recruiters
         queries = [
@@ -285,7 +273,7 @@ class JobHunter3000:
         
         return results
     
-    # ============= FEATURE 3: JOB EXTRACTION =============
+    # ============= JOB EXTRACTION =============
     def extract_job_details(self, content: str, url: str) -> Dict:
         """Extract job title and company from posting"""
         
@@ -299,7 +287,7 @@ class JobHunter3000:
                 match = re.search(pattern, url)
                 if match:
                     title = match.group(1).replace('-', ' ').title()
-                    break
+                    return {"title": title, "company": "Unknown"}
         
         # Use AI for extraction
         prompt = f"""
@@ -319,7 +307,7 @@ class JobHunter3000:
         
         return {"title": "Unknown", "company": "Unknown"}
     
-    # ============= FEATURE 4: GET RECENT JOBS =============
+    # ============= GET RECENT JOBS =============
     def get_recent_jobs(self, days: int = 2) -> List[Dict]:
         """Get recent LinkedIn jobs"""
         
@@ -366,7 +354,7 @@ class JobHunter3000:
         print(f"✅ Found {len(unique)} jobs")
         return unique[:self.daily_apply_limit * 2]
     
-    # ============= FEATURE 5: GET VALIDATED TARGETS =============
+    # ============= GET VALIDATED TARGETS =============
     def get_valid_targets(self, job: Dict) -> List[Dict]:
         """
         Get validated email targets for a job
@@ -437,7 +425,7 @@ class JobHunter3000:
         
         return unique_targets
     
-    # ============= FEATURE 6: GENERATE COVER LETTER (FIXED SPACING) =============
+    # ============= CLEAN JOB TITLE =============
     def clean_job_title(self, title: str) -> str:
         """Clean job title - remove extra text"""
         title = re.sub(r'Jobs?.*$', '', title, flags=re.IGNORECASE)
@@ -448,6 +436,7 @@ class JobHunter3000:
         title = re.sub(r'\(\d+\s+new\)', '', title)
         return title.strip()
     
+    # ============= GENERATE COVER LETTER =============
     def generate_personalized_letter(self, job: Dict, name: str) -> str:
         """Generate personalized cover letter with EXACT spacing"""
         
@@ -490,9 +479,7 @@ class JobHunter3000:
         
         # Fix any spacing issues
         if letter:
-            # Replace multiple line breaks with exactly one
             letter = re.sub(r'\n\s*\n\s*\n', '\n\n', letter)
-            # Remove trailing spaces
             letter = '\n'.join(line.rstrip() for line in letter.split('\n'))
         
         return letter
@@ -543,7 +530,7 @@ class JobHunter3000:
         
         return letter
     
-    # ============= FEATURE 7: GENERATE RESUME =============
+    # ============= GENERATE RESUME =============
     def generate_professional_resume(self, job: Dict) -> str:
         """Generate customized resume PDF"""
         
@@ -605,7 +592,7 @@ class JobHunter3000:
         doc.build(story)
         return custom_path
     
-    # ============= FEATURE 8: SEND EMAIL =============
+    # ============= SEND EMAIL =============
     def send_email(self, job: Dict, to_email: str, cover_letter: str, resume_path: str) -> bool:
         """Send email with attachment"""
         
@@ -650,7 +637,7 @@ class JobHunter3000:
             print(f"❌ Email send failed: {e}")
             return False
     
-    # ============= FEATURE 9: TRACK APPLICATION =============
+    # ============= TRACK APPLICATION =============
     def track_application(self, job: Dict, target: Dict):
         """Track successful application"""
         
@@ -677,7 +664,7 @@ class JobHunter3000:
         })
         self._save_json(self.applied_jobs_file, self.applied_jobs)
     
-    # ============= FEATURE 10: SCHEDULE FOLLOW-UP =============
+    # ============= SCHEDULE FOLLOW-UP =============
     def schedule_follow_up(self, job: Dict, days: int = 7):
         """Schedule follow-up email"""
         
@@ -693,7 +680,7 @@ class JobHunter3000:
         self._save_json(self.follow_ups_file, self.follow_ups)
         print(f"📅 Follow-up scheduled for {follow_up['follow_up_date']}")
     
-    # ============= FEATURE 11: SEND FOLLOW-UPS =============
+    # ============= SEND FOLLOW-UPS =============
     def send_follow_ups(self):
         """Check and send scheduled follow-ups"""
         
@@ -739,7 +726,7 @@ class JobHunter3000:
         self._save_json(self.follow_ups_file, self.follow_ups)
         return sent
     
-    # ============= FEATURE 12: INTERVIEW SCHEDULER =============
+    # ============= INTERVIEW SCHEDULER =============
     def schedule_interview(self, company: str, job_title: str, date: str, time: str, meeting_link: str = ""):
         """Schedule interview and send reminder"""
         
@@ -792,7 +779,7 @@ class JobHunter3000:
         except:
             return False
     
-    # ============= FEATURE 13: SEND INTERVIEW REMINDERS =============
+    # ============= SEND INTERVIEW REMINDERS =============
     def send_interview_reminders(self):
         """Send reminders for upcoming interviews"""
         
@@ -849,7 +836,7 @@ class JobHunter3000:
         self._save_json(self.interviews_file, self.interviews)
         return reminders_sent
     
-    # ============= FEATURE 14: GENERATE LEARNING TASKS =============
+    # ============= GENERATE LEARNING TASKS =============
     def generate_learning_tasks(self) -> str:
         """Generate daily C++ learning tasks"""
         
@@ -880,7 +867,7 @@ class JobHunter3000:
         
         return tasks
     
-    # ============= FEATURE 15: GENERATE MANUAL REVIEW HTML =============
+    # ============= GENERATE MANUAL REVIEW HTML =============
     def generate_manual_review_html(self):
         """Generate HTML report of emails needing review"""
         
@@ -1020,7 +1007,7 @@ class JobHunter3000:
         
         print("✅ Dashboard generated: dashboard.html")
     
-    # ============= FEATURE 16: SEND DAILY REPORT =============
+    # ============= SEND DAILY REPORT =============
     def send_daily_report(self, successful: int, total: int):
         """Send daily report email"""
         
@@ -1072,7 +1059,7 @@ class JobHunter3000:
         except:
             return False
     
-    # ============= FEATURE 17: SEND APPLICATION (MAIN) =============
+    # ============= SEND APPLICATION (MAIN) =============
     def send_application_zero_bounce(self, job: Dict) -> bool:
         """
         Send application with zero bounce guarantee
@@ -1156,8 +1143,49 @@ class JobHunter3000:
         # Send interview reminders
         reminder_sent = self.send_interview_reminders()
         
-        # Generate dashboard
+        # Generate basic dashboard
         self.generate_manual_review_html()
+        
+        # ============= ADVANCED FEATURES FROM FEATURES.PY =============
+        print("\n📊 Generating advanced analytics...")
+        analytics = self.advanced.response_analytics()
+        if analytics and analytics.get('avg_match_score'):
+            print(f"   Avg Match Score: {analytics['avg_match_score']}%")
+            print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
+
+        # Research top 2 companies
+        for job in jobs_to_apply[:2]:
+            print(f"\n🔍 Researching {job['company']}...")
+            try:
+                research = self.advanced.research_company(job['company'])
+                with open(f"research_{job['company'].replace(' ', '_')}.txt", 'w') as f:
+                    f.write(research)
+                print(f"   ✅ Research saved")
+            except Exception as e:
+                print(f"   ❌ Research failed: {e}")
+
+        # Track competitors weekly (once a week)
+        if datetime.now().weekday() == 0:  # Monday
+            print("\n📈 Tracking competitor trends...")
+            try:
+                trends = self.advanced.track_competitors()
+                print("✅ Competitor analysis done")
+            except Exception as e:
+                print(f"❌ Competitor tracking failed: {e}")
+
+        # Generate advanced dashboard
+        try:
+            self.advanced.generate_advanced_dashboard()
+            print("✅ Advanced dashboard generated")
+        except Exception as e:
+            print(f"❌ Advanced dashboard failed: {e}")
+
+        # Improved job search for next run
+        try:
+            better_jobs = self.advanced.improved_job_search()
+            print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
+        except Exception as e:
+            print(f"❌ Job search failed: {e}")
         
         # Send daily report
         self.send_daily_report(successful, len(jobs_to_apply))
@@ -1171,31 +1199,6 @@ class JobHunter3000:
         print(f"   📝 Manual review: {len([r for r in self.manual_review if r.get('status') == 'needs_manual_review'])}")
         print(f"   📊 Dashboard: dashboard.html")
         print(f"{'='*70}")
-    print("\n📊 Generating advanced analytics...")
-analytics = self.advanced.response_analytics()
-print(f"   Avg Match Score: {analytics['avg_match_score']}%")
-print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
-
-# Research top 2 companies
-for job in jobs_to_apply[:2]:
-    print(f"\n🔍 Researching {job['company']}...")
-    research = self.advanced.research_company(job['company'])
-    # Save research to file
-    with open(f"research_{job['company']}.txt", 'w') as f:
-        f.write(research)
-
-# Track competitors weekly (once a week)
-if datetime.now().weekday() == 0:  # Monday
-    print("\n📈 Tracking competitor trends...")
-    trends = self.advanced.track_competitors()
-    print("✅ Competitor analysis done")
-
-# Generate advanced dashboard
-self.advanced.generate_advanced_dashboard()
-
-# Improved job search for next run
-better_jobs = self.advanced.improved_job_search()
-print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
 
 if __name__ == "__main__":
     hunter = JobHunter3000()
