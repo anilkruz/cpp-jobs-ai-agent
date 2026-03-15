@@ -22,11 +22,13 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib import colors
 import validate_email_address
 from emailsherlock import validate_single_email
+from features import AdvancedFeatures
 
 # Load environment variables
 load_dotenv()
 
 class JobHunter3000:
+    self.advanced = AdvancedFeatures(self)
     def __init__(self):
         """Initialize all clients and configurations"""
         # API Clients
@@ -1169,6 +1171,31 @@ class JobHunter3000:
         print(f"   📝 Manual review: {len([r for r in self.manual_review if r.get('status') == 'needs_manual_review'])}")
         print(f"   📊 Dashboard: dashboard.html")
         print(f"{'='*70}")
+    print("\n📊 Generating advanced analytics...")
+analytics = self.advanced.response_analytics()
+print(f"   Avg Match Score: {analytics['avg_match_score']}%")
+print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
+
+# Research top 2 companies
+for job in jobs_to_apply[:2]:
+    print(f"\n🔍 Researching {job['company']}...")
+    research = self.advanced.research_company(job['company'])
+    # Save research to file
+    with open(f"research_{job['company']}.txt", 'w') as f:
+        f.write(research)
+
+# Track competitors weekly (once a week)
+if datetime.now().weekday() == 0:  # Monday
+    print("\n📈 Tracking competitor trends...")
+    trends = self.advanced.track_competitors()
+    print("✅ Competitor analysis done")
+
+# Generate advanced dashboard
+self.advanced.generate_advanced_dashboard()
+
+# Improved job search for next run
+better_jobs = self.advanced.improved_job_search()
+print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
 
 if __name__ == "__main__":
     hunter = JobHunter3000()
