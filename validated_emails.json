@@ -1,1 +1,15 @@
-{}
+{
+  "Omnissa_Sr Engineer - C++ & Angular developer (Bengaluru)": {
+    "targets": [
+      {
+        "email": "careers@omnissa.com",
+        "name": null,
+        "confidence": 80,
+        "type": "generic",
+        "source": "common_pattern",
+        "priority": 2
+      }
+    ],
+    "timestamp": 1773588709.881176
+  }
+}
