@@ -12,6 +12,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 from typing import List, Dict, Optional
 from tavily import TavilyClient
+import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter
@@ -32,7 +33,6 @@ class JobHunter3000:
         """Initialize all clients and configurations"""
         # API Clients
         self.openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
         
         # Email config
         self.email = os.getenv("EMAIL")
@@ -106,7 +106,56 @@ class JobHunter3000:
             'groupon': 'jobs@groupon.com',
             'ringcentral': 'careers@ringcentral.com'
         }
+    def get_recent_jobs(self, days: int = 2) -> List[Dict]:
+    """Get jobs using SerpAPI (free)"""
     
+    print(f"🔍 Searching for C++ jobs using SerpAPI...")
+    
+    api_key = os.getenv("SERPAPI_KEY")
+    if not api_key:
+        print("❌ SerpAPI key not found")
+        return []
+    
+    jobs = []
+    
+    # SerpAPI Google Jobs search
+    params = {
+        "api_key": api_key,
+        "engine": "google_jobs",
+        "q": "C++ developer Bangalore",
+        "hl": "en",
+        "gl": "in"
+    }
+    
+    try:
+        response = requests.get(
+            "https://serpapi.com/search",
+            params=params,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            jobs_results = data.get("jobs_results", [])
+            
+            for job in jobs_results[:5]:
+                jobs.append({
+                    "title": job.get("title", "Unknown"),
+                    "company": job.get("company_name", "Unknown"),
+                    "url": job.get("related_links", [{}])[0].get("link", ""),
+                    "content": job.get("description", ""),
+                    "date": datetime.now().strftime("%Y-%m-%d")
+                })
+                print(f"   ✅ Found: {job.get('title')} at {job.get('company_name')}")
+        else:
+            print(f"❌ SerpAPI error: {response.status_code}")
+            
+    except Exception as e:
+        print(f"❌ SerpAPI exception: {e}")
+    
+    print(f"✅ Total jobs found: {len(jobs)}")
+    return jobs[:self.daily_apply_limit]
+
     def _load_json(self, file_path, default):
         """Load JSON file with error handling"""
         try:
