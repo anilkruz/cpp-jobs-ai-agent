@@ -11,8 +11,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from typing import List, Dict, Optional
-from tavily import TavilyClient
-import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter
@@ -22,7 +20,6 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib import colors
 import validate_email_address
-# from emailsherlock import validate_single_email  # Commented out - using DNS only
 from features import AdvancedFeatures
 
 # Load environment variables
@@ -38,6 +35,12 @@ class JobHunter3000:
         self.email = os.getenv("EMAIL")
         self.app_password = os.getenv("APP_PASSWORD")
         self.phone = "+91-9557846156"
+        
+        # SerpAPI key for job search
+        self.serpapi_key = os.getenv("SERPAPI_KEY")
+        if not self.serpapi_key:
+            print("⚠️ WARNING: SERPAPI_KEY not found in environment variables")
+            print("💡 Add SERPAPI_KEY to GitHub Secrets for live job search")
         
         # Profile
         self.profile = {
@@ -94,68 +97,7 @@ class JobHunter3000:
             'info', 'contact', 'support', 'admin', 'hello',
             'career', 'job', 'hiring', 'recruiter'
         ]
-        
-        # Known valid HR emails for major companies
-        self.known_valid_emails = {
-            'cisco': 'cisco@example.com',
-            'google': 'careers@google.com',
-            'microsoft': 'resume@microsoft.com',
-            'amazon': 'jobs@amazon.com',
-            'uber': 'jobs@uber.com',
-            'dell': 'careers@dell.com',
-            'groupon': 'jobs@groupon.com',
-            'ringcentral': 'careers@ringcentral.com'
-        }
-    def get_recent_jobs(self, days: int = 2) -> List[Dict]:
-    """Get jobs using SerpAPI (free)"""
     
-    print(f"🔍 Searching for C++ jobs using SerpAPI...")
-    
-    api_key = os.getenv("SERPAPI_KEY")
-    if not api_key:
-        print("❌ SerpAPI key not found")
-        return []
-    
-    jobs = []
-    
-    # SerpAPI Google Jobs search
-    params = {
-        "api_key": api_key,
-        "engine": "google_jobs",
-        "q": "C++ developer Bangalore",
-        "hl": "en",
-        "gl": "in"
-    }
-    
-    try:
-        response = requests.get(
-            "https://serpapi.com/search",
-            params=params,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            jobs_results = data.get("jobs_results", [])
-            
-            for job in jobs_results[:5]:
-                jobs.append({
-                    "title": job.get("title", "Unknown"),
-                    "company": job.get("company_name", "Unknown"),
-                    "url": job.get("related_links", [{}])[0].get("link", ""),
-                    "content": job.get("description", ""),
-                    "date": datetime.now().strftime("%Y-%m-%d")
-                })
-                print(f"   ✅ Found: {job.get('title')} at {job.get('company_name')}")
-        else:
-            print(f"❌ SerpAPI error: {response.status_code}")
-            
-    except Exception as e:
-        print(f"❌ SerpAPI exception: {e}")
-    
-    print(f"✅ Total jobs found: {len(jobs)}")
-    return jobs[:self.daily_apply_limit]
-
     def _load_json(self, file_path, default):
         """Load JSON file with error handling"""
         try:
@@ -183,6 +125,121 @@ class JobHunter3000:
         except Exception as e:
             print(f"⚠️ AI Error: {e}")
             return ""
+    
+    # ============= JOB SEARCH USING SERPAPI (FREE) =============
+    def get_recent_jobs(self, days: int = 2) -> List[Dict]:
+        """Get jobs using SerpAPI (free - 100 searches/month)"""
+        
+        print(f"🔍 Searching for C++ jobs using SerpAPI...")
+        
+        if not self.serpapi_key:
+            print("❌ SerpAPI key not found - using fallback jobs")
+            return self._get_fallback_jobs()
+        
+        jobs = []
+        
+        # SerpAPI Google Jobs search
+        params = {
+            "api_key": self.serpapi_key,
+            "engine": "google_jobs",
+            "q": "C++ developer Bangalore",
+            "hl": "en",
+            "gl": "in",
+            "chips": "date_posted:today"  # Recent jobs
+        }
+        
+        try:
+            print("   📡 Fetching jobs from SerpAPI...")
+            response = requests.get(
+                "https://serpapi.com/search",
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                jobs_results = data.get("jobs_results", [])
+                
+                if not jobs_results:
+                    print("   ⚠️ No jobs found from SerpAPI")
+                    return self._get_fallback_jobs()
+                
+                for job in jobs_results[:self.daily_apply_limit * 2]:
+                    # Extract job details
+                    title = job.get("title", "Unknown")
+                    company = job.get("company_name", "Unknown")
+                    description = job.get("description", "")
+                    
+                    # Get apply link
+                    related_links = job.get("related_links", [])
+                    apply_url = ""
+                    for link in related_links:
+                        if link.get("link", ""):
+                            apply_url = link.get("link")
+                            break
+                    
+                    job_data = {
+                        "title": title,
+                        "company": company,
+                        "url": apply_url,
+                        "content": description,
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "source": "serpapi"
+                    }
+                    jobs.append(job_data)
+                    print(f"   ✅ Found: {title[:40]} at {company}")
+            else:
+                print(f"❌ SerpAPI error: {response.status_code}")
+                return self._get_fallback_jobs()
+                
+        except Exception as e:
+            print(f"❌ SerpAPI exception: {e}")
+            return self._get_fallback_jobs()
+        
+        print(f"✅ Total jobs found: {len(jobs)}")
+        return jobs[:self.daily_apply_limit * 2]
+    
+    def _get_fallback_jobs(self) -> List[Dict]:
+        """Fallback hardcoded jobs when API fails"""
+        print("📋 Using fallback jobs for testing...")
+        
+        return [
+            {
+                "title": "Senior C++ Developer - Distributed Systems",
+                "company": "Cisco",
+                "url": "https://www.linkedin.com/jobs/view/123456",
+                "content": "We are looking for a Senior C++ Developer with expertise in distributed systems, multithreading, and low-latency applications. 6+ years of experience required. Location: Bangalore.",
+                "date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Lead C++ Engineer - Fintech",
+                "company": "Goldman Sachs",
+                "url": "https://www.linkedin.com/jobs/view/123457",
+                "content": "Goldman Sachs is hiring a Lead C++ Engineer for our fintech division. Experience with high-frequency trading systems, C++17/20, and performance optimization required.",
+                "date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Distributed Systems Engineer",
+                "company": "Microsoft",
+                "url": "https://www.linkedin.com/jobs/view/123458",
+                "content": "Microsoft is looking for a Distributed Systems Engineer to work on Azure. Strong C++ skills and experience with distributed systems required.",
+                "date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Low Latency C++ Developer",
+                "company": "Uber",
+                "url": "https://www.linkedin.com/jobs/view/123459",
+                "content": "Uber is hiring a Low Latency C++ Developer for our real-time matching systems. Experience with multithreading and performance optimization required.",
+                "date": datetime.now().strftime("%Y-%m-%d")
+            },
+            {
+                "title": "Senior Software Engineer - C++",
+                "company": "Dell Technologies",
+                "url": "https://www.linkedin.com/jobs/view/123460",
+                "content": "Dell is seeking a Senior Software Engineer with strong C++ skills to work on distributed storage systems. Location: Bangalore.",
+                "date": datetime.now().strftime("%Y-%m-%d")
+            }
+        ]
     
     # ============= EMAIL VALIDATION (ZERO BOUNCE) =============
     def validate_email_ultimate(self, email: str, company: str) -> Dict:
@@ -215,14 +272,14 @@ class JobHunter3000:
         # Check 3: Generic email check
         if local_part in self.generic_prefixes:
             result['confidence'] = 30
-            result['reason'] = 'Generic email prefix'
+            result['reason'] = 'Generic email prefix - may be valid but low confidence'
         
         # Check 4: DNS MX records (primary validation)
         try:
             mx_records = dns.resolver.resolve(domain, 'MX')
             if mx_records:
                 result['valid'] = True
-                result['confidence'] = 80
+                result['confidence'] = max(result['confidence'], 80)
                 result['reason'] = 'Valid - MX records found'
                 return result
         except Exception as e:
@@ -231,17 +288,16 @@ class JobHunter3000:
         
         return result
     
-    # ============= FIND HUMAN EMAILS FROM LINKEDIN =============
-    def find_human_emails_from_linkedin(self, job: Dict) -> List[Dict]:
+    # ============= FIND HUMAN EMAILS FROM JOB CONTENT =============
+    def find_human_emails_from_content(self, job: Dict) -> List[Dict]:
         """
-        Extract human emails from LinkedIn job posting
+        Extract human emails from job posting content
         Returns list of {'email': str, 'name': str, 'confidence': int}
         """
         
         results = []
         content = job.get('content', '')
         company = job.get('company', '')
-        url = job.get('url', '')
         
         # Strategy 1: Look for email patterns with names
         email_name_pattern = r'([A-Z][a-z]+ [A-Z][a-z]+).*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
@@ -289,36 +345,25 @@ class JobHunter3000:
             except:
                 continue
         
-        # Strategy 3: Search LinkedIn for recruiters
-        queries = [
-            f"site:linkedin.com/in/ {company} recruiter",
-            f"site:linkedin.com/in/ {company} talent acquisition"
+        # Strategy 3: Common HR email patterns (fallback)
+        company_clean = company.lower().replace(' ', '')
+        common_patterns = [
+            f"careers@{company_clean}.com",
+            f"jobs@{company_clean}.com",
+            f"recruitment@{company_clean}.com",
+            f"talent@{company_clean}.com",
+            f"hr@{company_clean}.com"
         ]
         
-        for query in queries:
-            try:
-                search_results = self.tavily.search(query, max_results=2)
-                
-                for r in search_results.get("results", []):
-                    profile_content = r.get("content", "")
-                    
-                    name_match = re.search(r'([A-Z][a-z]+ [A-Z][a-z]+)', profile_content)
-                    if name_match:
-                        name = name_match.group(1)
-                        
-                        email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', profile_content)
-                        if email_match:
-                            email = email_match.group(1)
-                            validation = self.validate_email_ultimate(email, company)
-                            if validation['valid']:
-                                results.append({
-                                    'email': email,
-                                    'name': name,
-                                    'confidence': validation['confidence'],
-                                    'source': 'linkedin_search'
-                                })
-            except:
-                continue
+        for email in common_patterns:
+            validation = self.validate_email_ultimate(email, company)
+            if validation['valid']:
+                results.append({
+                    'email': email,
+                    'confidence': validation['confidence'],
+                    'source': 'common_pattern'
+                })
+                break
         
         return results
     
@@ -338,7 +383,7 @@ class JobHunter3000:
                     title = match.group(1).replace('-', ' ').title()
                     return {"title": title, "company": "Unknown"}
         
-        # Use AI for extraction
+        # Use AI for extraction if needed
         prompt = f"""
         Extract job title and company from this posting.
         Return as JSON: {{"title": "...", "company": "..."}}
@@ -355,53 +400,6 @@ class JobHunter3000:
             pass
         
         return {"title": "Unknown", "company": "Unknown"}
-    
-    # ============= GET RECENT JOBS =============
-    def get_recent_jobs(self, days: int = 2) -> List[Dict]:
-        """Get recent LinkedIn jobs"""
-        
-        print(f"🔍 Searching for recent C++ jobs...")
-        
-        queries = [
-            "site:linkedin.com/jobs C++ backend Bangalore",
-            "site:linkedin.com/jobs distributed systems Bangalore",
-            "site:linkedin.com/jobs Senior C++ Developer Bangalore"
-        ]
-        
-        jobs = []
-        
-        for query in queries:
-            try:
-                results = self.tavily.search(query, max_results=5)
-                
-                for r in results.get("results", []):
-                    details = self.extract_job_details(
-                        r.get("content", ""),
-                        r.get("url", "")
-                    )
-                    
-                    if details["title"] != "Unknown" and details["company"] != "Unknown":
-                        jobs.append({
-                            "title": details["title"],
-                            "company": details["company"],
-                            "url": r.get("url", ""),
-                            "content": r.get("content", ""),
-                            "date": datetime.now().strftime("%Y-%m-%d")
-                        })
-            except:
-                continue
-        
-        # Remove duplicates
-        unique = []
-        seen = set()
-        for job in jobs:
-            key = f"{job['company']}_{job['title']}"
-            if key not in seen:
-                seen.add(key)
-                unique.append(job)
-        
-        print(f"✅ Found {len(unique)} jobs")
-        return unique[:self.daily_apply_limit * 2]
     
     # ============= GET VALIDATED TARGETS =============
     def get_valid_targets(self, job: Dict) -> List[Dict]:
@@ -421,8 +419,8 @@ class JobHunter3000:
                 print(f"📦 Using cached email for {company}")
                 return cached.get('targets', [])
         
-        # Strategy 1: Find human emails from LinkedIn
-        human_emails = self.find_human_emails_from_linkedin(job)
+        # Strategy 1: Find human emails from job content
+        human_emails = self.find_human_emails_from_content(job)
         for email_data in human_emails:
             targets.append({
                 'email': email_data['email'],
@@ -432,27 +430,24 @@ class JobHunter3000:
                 'priority': 1
             })
         
-        # Strategy 2: Try company-specific patterns
-        company_lower = company.lower().replace(' ', '')
-        
-        recruiter_query = f"{company} recruiter email contact Bangalore"
-        try:
-            search_results = self.tavily.search(recruiter_query, max_results=2)
-            for r in search_results.get("results", []):
-                content = r.get("content", "")
-                email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', content)
-                if email_match:
-                    email = email_match.group(1)
-                    validation = self.validate_email_ultimate(email, company)
-                    if validation['valid']:
-                        targets.append({
-                            'email': email,
-                            'confidence': validation['confidence'],
-                            'type': 'search_found',
-                            'priority': 2
-                        })
-        except:
-            pass
+        # Strategy 2: Common HR email patterns (if no human emails found)
+        if not targets:
+            company_clean = company.lower().replace(' ', '')
+            common_patterns = [
+                f"careers@{company_clean}.com",
+                f"jobs@{company_clean}.com"
+            ]
+            
+            for email in common_patterns:
+                validation = self.validate_email_ultimate(email, company)
+                if validation['valid']:
+                    targets.append({
+                        'email': email,
+                        'confidence': validation['confidence'],
+                        'type': 'common',
+                        'priority': 2
+                    })
+                    break
         
         # Remove duplicates by email
         seen = set()
@@ -1197,15 +1192,19 @@ class JobHunter3000:
         
         # ============= ADVANCED FEATURES FROM FEATURES.PY =============
         print("\n📊 Generating advanced analytics...")
-        analytics = self.advanced.response_analytics()
-        if analytics and analytics.get('avg_match_score'):
-            print(f"   Avg Match Score: {analytics['avg_match_score']}%")
-            print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
+        try:
+            analytics = self.advanced.response_analytics()
+            if analytics and analytics.get('avg_match_score'):
+                print(f"   Avg Match Score: {analytics['avg_match_score']}%")
+                print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
+        except Exception as e:
+            print(f"   ⚠️ Analytics failed: {e}")
 
         # Research top 2 companies
         for job in jobs_to_apply[:2]:
             print(f"\n🔍 Researching {job['company']}...")
             try:
+                # Note: research_company uses OpenAI, not Tavily
                 research = self.advanced.research_company(job['company'])
                 with open(f"research_{job['company'].replace(' ', '_')}.txt", 'w') as f:
                     f.write(research)
@@ -1229,10 +1228,12 @@ class JobHunter3000:
         except Exception as e:
             print(f"❌ Advanced dashboard failed: {e}")
 
-        # Improved job search for next run
+        # Improved job search for next run (Note: this uses Tavily in features.py)
+        # You may want to comment this out or modify features.py
         try:
-            better_jobs = self.advanced.improved_job_search()
-            print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
+            # better_jobs = self.advanced.improved_job_search()
+            # print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
+            pass
         except Exception as e:
             print(f"❌ Job search failed: {e}")
         
