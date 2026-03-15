@@ -12,7 +12,7 @@ class AdvancedFeatures:
     def __init__(self, hunter):
         self.hunter = hunter
     
-    # ============= FEATURE 1: RESPONSE ANALYTICS =============
+    # ============= FEATURE 1: RESPONSE ANALYTICS (UPDATED) =============
     def response_analytics(self):
         """Track and analyze application responses"""
         
@@ -26,6 +26,10 @@ class AdvancedFeatures:
         companies = [r['company'] for r in responses.values()]
         unique_companies = len(set(companies))
         most_applied = Counter(companies).most_common(3)
+        
+        # NEW: Count human vs generic emails
+        human_count = sum(1 for r in responses.values() if r.get('type') == 'human')
+        generic_count = sum(1 for r in responses.values() if r.get('type') == 'generic')
         
         # Match score analysis
         match_scores = [r.get('match_score', 0) for r in responses.values()]
@@ -41,7 +45,10 @@ class AdvancedFeatures:
             'avg_match_score': round(avg_match, 2),
             'follow_up_rate': round(follow_up_rate, 2),
             'top_companies': most_applied,
-            'daily_avg': round(total / max(1, (datetime.now() - datetime.strptime(list(responses.values())[0]['sent_date'], '%Y-%m-%d')).days), 2)
+            'daily_avg': round(total / max(1, (datetime.now() - datetime.strptime(list(responses.values())[0]['sent_date'], '%Y-%m-%d')).days), 2),
+            'human_emails': human_count,
+            'generic_emails': generic_count,
+            'human_percentage': round((human_count/total)*100, 1) if total > 0 else 0
         }
         
         # Generate insights
@@ -52,6 +59,8 @@ class AdvancedFeatures:
             insights.append("📨 Follow-up more - Increases response rate by 40%")
         if unique_companies < total/2:
             insights.append("🎯 Target more companies - Avoid over-applying to same company")
+        if human_count < generic_count:
+            insights.append("👤 More generic emails than human - Focus on finding recruiters directly")
         
         analytics['insights'] = insights
         
@@ -61,13 +70,12 @@ class AdvancedFeatures:
         
         return analytics
     
-    # ============= FEATURE 2: COMPANY RESEARCH (No Tavily) =============
+    # ============= FEATURE 2: COMPANY RESEARCH =============
     def research_company(self, company_name):
         """Deep research on target company using OpenAI only"""
         
         print(f"🔍 Researching {company_name} using AI...")
         
-        # Use OpenAI to generate company research based on public knowledge
         prompt = f"""
         Provide detailed research about {company_name} for interview preparation:
         
@@ -95,7 +103,7 @@ class AdvancedFeatures:
         print(f"✅ Research saved to {research_file}")
         return summary
     
-    # ============= FEATURE 3: COMPETITOR TRACKING (No Tavily) =============
+    # ============= FEATURE 3: COMPETITOR TRACKING =============
     def track_competitors(self):
         """Track market trends using AI knowledge"""
         
@@ -127,7 +135,7 @@ class AdvancedFeatures:
         print("✅ Competitor analysis saved to competitor_trends.json")
         return analysis
     
-    # ============= FEATURE 4: ADVANCED DASHBOARD =============
+    # ============= FEATURE 4: ADVANCED DASHBOARD (UPDATED) =============
     def generate_advanced_dashboard(self):
         """Generate beautiful HTML dashboard with charts"""
         
@@ -142,11 +150,17 @@ class AdvancedFeatures:
         dates = []
         companies = []
         scores = []
+        types = []  # NEW: track email types
         
         for r in responses.values():
             dates.append(r['sent_date'])
             companies.append(r['company'])
             scores.append(r.get('match_score', 0))
+            types.append(r.get('type', 'unknown'))
+        
+        # Count by type for chart
+        human_count = types.count('human')
+        generic_count = types.count('generic')
         
         # Generate HTML
         html = f"""
@@ -163,13 +177,15 @@ class AdvancedFeatures:
                 .stat-card {{ background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
                 .stat-number {{ font-size: 36px; font-weight: bold; color: #1a4d8c; }}
                 .stat-label {{ color: #666; margin-top: 10px; }}
-                .chart-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 30px; }}
+                .chart-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }}
                 .chart-card {{ background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
                 table {{ width: 100%; background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
                 th {{ background: #1a4d8c; color: white; padding: 15px; }}
                 td {{ padding: 15px; border-bottom: 1px solid #eee; }}
                 .insight {{ background: #e8f4fd; padding: 15px; border-radius: 10px; margin: 10px 0; }}
                 .competitor {{ background: #fff3cd; padding: 20px; border-radius: 15px; margin-top: 30px; }}
+                .human {{ color: #28a745; font-weight: bold; }}
+                .generic {{ color: #dc3545; }}
             </style>
         </head>
         <body>
@@ -193,8 +209,8 @@ class AdvancedFeatures:
                         <div class="stat-label">Avg Match Score</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">{analytics['daily_avg']}</div>
-                        <div class="stat-label">Daily Average</div>
+                        <div class="stat-number">{analytics['human_emails']}</div>
+                        <div class="stat-label">Human Emails</div>
                     </div>
                 </div>
                 
@@ -206,6 +222,10 @@ class AdvancedFeatures:
                     <div class="chart-card">
                         <h3>Match Score Trend</h3>
                         <canvas id="scoreChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Email Types</h3>
+                        <canvas id="typeChart"></canvas>
                     </div>
                 </div>
                 
@@ -223,6 +243,7 @@ class AdvancedFeatures:
                         <th>Company</th>
                         <th>Position</th>
                         <th>Match Score</th>
+                        <th>Type</th>
                         <th>Status</th>
                     </tr>
                     {''.join(f'''
@@ -231,6 +252,7 @@ class AdvancedFeatures:
                         <td><b>{r['company']}</b></td>
                         <td>{r['job_title'][:40]}</td>
                         <td>{r.get('match_score', 0)}%</td>
+                        <td class="{'human' if r.get('type') == 'human' else 'generic'}">{r.get('type', 'unknown')}</td>
                         <td>✅ Applied</td>
                     </tr>
                     ''' for r in list(responses.values())[-10:])}
@@ -270,6 +292,18 @@ class AdvancedFeatures:
                     }}
                 }});
                 
+                // Email type chart
+                new Chart(document.getElementById('typeChart'), {{
+                    type: 'pie',
+                    data: {{
+                        labels: ['Human Emails', 'Generic Emails'],
+                        datasets: [{{
+                            data: [{human_count}, {generic_count}],
+                            backgroundColor: ['#28a745', '#dc3545']
+                        }}]
+                    }}
+                }});
+                
                 // Load competitor data
                 fetch('competitor_trends.json')
                     .then(r => r.json())
@@ -285,7 +319,7 @@ class AdvancedFeatures:
         
         print("✅ Advanced dashboard generated: advanced_dashboard.html")
     
-    # ============= FEATURE 5: AUTO-APPLY IMPROVEMENTS (No Tavily) =============
+    # ============= FEATURE 5: AUTO-APPLY IMPROVEMENTS =============
     def improved_job_search(self):
         """Better job search suggestions using AI"""
         

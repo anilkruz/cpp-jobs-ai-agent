@@ -13,12 +13,13 @@ from email import encoders
 from typing import List, Dict, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 from reportlab.lib import colors
+from reportlab.lib.fonts import addMapping
 import validate_email_address
 from features import AdvancedFeatures
 
@@ -91,11 +92,18 @@ class JobHunter3000:
             'mailinator.com', 'guerrillamail.com', 'throwaway.com'
         ]
         
-        # Generic email prefixes to avoid
+        # Generic email prefixes to avoid (LOW CONFIDENCE)
         self.generic_prefixes = [
             'hr', 'careers', 'jobs', 'recruitment', 'talent',
             'info', 'contact', 'support', 'admin', 'hello',
             'career', 'job', 'hiring', 'recruiter'
+        ]
+        
+        # Human email patterns (HIGH CONFIDENCE)
+        self.human_patterns = [
+            r'^[a-z]+\.[a-z]+@',  # first.last@
+            r'^[a-z]+\.[a-z]+\.[a-z]+@',  # first.m.last@
+            r'^[a-z][a-z][a-z]+@',  # initials based
         ]
     
     def _load_json(self, file_path, default):
@@ -126,7 +134,7 @@ class JobHunter3000:
             print(f"⚠️ AI Error: {e}")
             return ""
     
-    # ============= JOB SEARCH USING SERPAPI (FREE) =============
+    # ============= JOB SEARCH USING SERPAPI =============
     def get_recent_jobs(self, days: int = 2) -> List[Dict]:
         """Get jobs using SerpAPI (free - 100 searches/month)"""
         
@@ -145,7 +153,7 @@ class JobHunter3000:
             "q": "C++ developer Bangalore",
             "hl": "en",
             "gl": "in",
-            "chips": "date_posted:today"  # Recent jobs
+            "chips": "date_posted:today"
         }
         
         try:
@@ -165,7 +173,6 @@ class JobHunter3000:
                     return self._get_fallback_jobs()
                 
                 for job in jobs_results[:self.daily_apply_limit * 2]:
-                    # Extract job details
                     title = job.get("title", "Unknown")
                     company = job.get("company_name", "Unknown")
                     description = job.get("description", "")
@@ -241,18 +248,37 @@ class JobHunter3000:
             }
         ]
     
-    # ============= EMAIL VALIDATION (ZERO BOUNCE) =============
+    # ============= IMPROVED EMAIL VALIDATION =============
+    def is_human_email(self, email: str) -> bool:
+        """Check if email looks like a human (not generic)"""
+        local_part = email.split('@')[0].lower()
+        
+        # Check generic prefixes
+        if local_part in self.generic_prefixes:
+            return False
+        
+        # Check patterns that indicate human
+        if '.' in local_part and not any(x in local_part for x in ['noreply', 'no-reply']):
+            return True
+        
+        # Check length (humans usually have 5-20 chars)
+        if 5 <= len(local_part) <= 20:
+            return True
+        
+        return False
+    
     def validate_email_ultimate(self, email: str, company: str) -> Dict:
         """
         Ultimate email validation with multiple checks
-        Returns: {'valid': bool, 'confidence': int, 'reason': str, 'email': str}
+        Returns: {'valid': bool, 'confidence': int, 'reason': str, 'email': str, 'type': str}
         """
         
         result = {
             'valid': False,
             'confidence': 0,
             'reason': '',
-            'email': email
+            'email': email,
+            'type': 'generic'  # default type
         }
         
         # Check 1: Basic format
@@ -269,10 +295,13 @@ class JobHunter3000:
             result['reason'] = 'Domain in blacklist'
             return result
         
-        # Check 3: Generic email check
-        if local_part in self.generic_prefixes:
+        # Check 3: Determine if human or generic
+        if self.is_human_email(email):
+            result['type'] = 'human'
+            result['confidence'] = 70
+        else:
+            result['type'] = 'generic'
             result['confidence'] = 30
-            result['reason'] = 'Generic email prefix - may be valid but low confidence'
         
         # Check 4: DNS MX records (primary validation)
         try:
@@ -292,14 +321,14 @@ class JobHunter3000:
     def find_human_emails_from_content(self, job: Dict) -> List[Dict]:
         """
         Extract human emails from job posting content
-        Returns list of {'email': str, 'name': str, 'confidence': int}
+        Returns list of {'email': str, 'name': str, 'confidence': int, 'type': str}
         """
         
         results = []
         content = job.get('content', '')
         company = job.get('company', '')
         
-        # Strategy 1: Look for email patterns with names
+        # Strategy 1: Look for email patterns with names (HIGHEST CONFIDENCE)
         email_name_pattern = r'([A-Z][a-z]+ [A-Z][a-z]+).*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
         matches = re.findall(email_name_pattern, content)
         
@@ -314,6 +343,7 @@ class JobHunter3000:
                         'email': email,
                         'name': name,
                         'confidence': validation['confidence'],
+                        'type': 'human',
                         'source': 'direct_match'
                     })
         
@@ -339,31 +369,34 @@ class JobHunter3000:
                             'email': email,
                             'name': name,
                             'confidence': validation['confidence'],
+                            'type': 'human',
                             'source': 'generated_from_name'
                         })
                         break
             except:
                 continue
         
-        # Strategy 3: Common HR email patterns (fallback)
-        company_clean = company.lower().replace(' ', '')
-        common_patterns = [
-            f"careers@{company_clean}.com",
-            f"jobs@{company_clean}.com",
-            f"recruitment@{company_clean}.com",
-            f"talent@{company_clean}.com",
-            f"hr@{company_clean}.com"
-        ]
-        
-        for email in common_patterns:
-            validation = self.validate_email_ultimate(email, company)
-            if validation['valid']:
-                results.append({
-                    'email': email,
-                    'confidence': validation['confidence'],
-                    'source': 'common_pattern'
-                })
-                break
+        # Strategy 3: Common HR email patterns (LOW CONFIDENCE - fallback)
+        if not results:
+            company_clean = company.lower().replace(' ', '')
+            common_patterns = [
+                f"careers@{company_clean}.com",
+                f"jobs@{company_clean}.com",
+                f"recruitment@{company_clean}.com",
+                f"talent@{company_clean}.com",
+                f"hr@{company_clean}.com"
+            ]
+            
+            for email in common_patterns:
+                validation = self.validate_email_ultimate(email, company)
+                if validation['valid']:
+                    results.append({
+                        'email': email,
+                        'confidence': validation['confidence'],
+                        'type': 'generic',
+                        'source': 'common_pattern'
+                    })
+                    break
         
         return results
     
@@ -401,11 +434,11 @@ class JobHunter3000:
         
         return {"title": "Unknown", "company": "Unknown"}
     
-    # ============= GET VALIDATED TARGETS =============
+    # ============= GET VALIDATED TARGETS WITH PROPER TYPE =============
     def get_valid_targets(self, job: Dict) -> List[Dict]:
         """
         Get validated email targets for a job
-        Returns list of validated targets with confidence scores
+        Returns list of validated targets with confidence scores and type
         """
         
         targets = []
@@ -426,28 +459,10 @@ class JobHunter3000:
                 'email': email_data['email'],
                 'name': email_data.get('name'),
                 'confidence': email_data['confidence'],
-                'type': 'human',
-                'priority': 1
+                'type': email_data['type'],  # 'human' or 'generic'
+                'source': email_data['source'],
+                'priority': 1 if email_data['type'] == 'human' else 2
             })
-        
-        # Strategy 2: Common HR email patterns (if no human emails found)
-        if not targets:
-            company_clean = company.lower().replace(' ', '')
-            common_patterns = [
-                f"careers@{company_clean}.com",
-                f"jobs@{company_clean}.com"
-            ]
-            
-            for email in common_patterns:
-                validation = self.validate_email_ultimate(email, company)
-                if validation['valid']:
-                    targets.append({
-                        'email': email,
-                        'confidence': validation['confidence'],
-                        'type': 'common',
-                        'priority': 2
-                    })
-                    break
         
         # Remove duplicates by email
         seen = set()
@@ -457,8 +472,8 @@ class JobHunter3000:
                 seen.add(t['email'])
                 unique_targets.append(t)
         
-        # Sort by confidence and priority
-        unique_targets.sort(key=lambda x: (-x['confidence'], x['priority']))
+        # Sort by priority (human first) and confidence
+        unique_targets.sort(key=lambda x: (x['priority'], -x['confidence']))
         
         # Cache results
         self.validated_emails[cache_key] = {
@@ -468,6 +483,167 @@ class JobHunter3000:
         self._save_json(self.valid_emails_file, self.validated_emails)
         
         return unique_targets
+    
+    # ============= IMPROVED RESUME GENERATION =============
+    def generate_professional_resume(self, job: Dict) -> str:
+        """Generate beautifully formatted resume PDF"""
+        
+        custom_path = f"custom_resumes/Anil_Kumar_{job['company'].replace(' ', '_')}.pdf"
+        os.makedirs("custom_resumes", exist_ok=True)
+        
+        # Create PDF with better formatting
+        doc = SimpleDocTemplate(
+            custom_path,
+            pagesize=letter,
+            rightMargin=72,
+            leftMargin=72,
+            topMargin=72,
+            bottomMargin=72
+        )
+        
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Custom styles for better formatting
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontName='Helvetica-Bold',
+            fontSize=24,
+            spaceAfter=6,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor('#1a4d8c')
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=12,
+            textColor=colors.HexColor('#555555'),
+            spaceAfter=12,
+            alignment=TA_LEFT
+        )
+        
+        contact_style = ParagraphStyle(
+            'ContactStyle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            textColor=colors.HexColor('#777777'),
+            spaceAfter=20,
+            alignment=TA_LEFT
+        )
+        
+        section_style = ParagraphStyle(
+            'SectionStyle',
+            parent=styles['Heading2'],
+            fontName='Helvetica-Bold',
+            fontSize=14,
+            spaceBefore=12,
+            spaceAfter=6,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor('#1a4d8c'),
+            borderWidth=1,
+            borderColor=colors.HexColor('#cccccc'),
+            borderPadding=(0, 0, 3, 0)
+        )
+        
+        bullet_style = ParagraphStyle(
+            'BulletStyle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            leftIndent=20,
+            spaceAfter=4,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor('#333333')
+        )
+        
+        normal_style = ParagraphStyle(
+            'NormalStyle',
+            parent=styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            spaceAfter=6,
+            alignment=TA_LEFT,
+            textColor=colors.HexColor('#444444'),
+            leading=14
+        )
+        
+        # Header with better formatting
+        story.append(Paragraph("ANIL KUMAR", title_style))
+        story.append(Paragraph("Senior C++ Engineer | Distributed Systems | Low Latency", subtitle_style))
+        story.append(Paragraph(
+            "✉️ anilkruz@gmail.com  |  📍 Bangalore, India  |  📱 +91-9557846156  |  🔗 linkedin.com/in/anil-kumar",
+            contact_style
+        ))
+        
+        # Summary section
+        story.append(Paragraph("PROFESSIONAL SUMMARY", section_style))
+        summary_text = f"""Results-driven Technical Lead with 6.5+ years of experience at Sabre/Coforge, 
+        specializing in Modern C++ (11/14/17/20), distributed systems, and performance optimization. 
+        Proven track record of delivering 30% performance improvement through multi-threaded optimization. 
+        Seeking to leverage expertise at {job['company']} to build high-performance, scalable systems."""
+        story.append(Paragraph(summary_text, normal_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Technical Skills with better formatting
+        story.append(Paragraph("TECHNICAL SKILLS", section_style))
+        skills_data = [
+            ["Programming:", "Modern C++ (11/14/17/20), C, STL, Boost"],
+            ["Systems:", "Linux, IPC, TCP/IP, Socket Programming"],
+            ["Concurrency:", "Multithreading, Mutex, Condition Variables, Thread Pools"],
+            ["Tools:", "GDB, Valgrind, perf, Git, CMake, Google Test"],
+            ["Debugging:", "AddressSanitizer, ThreadSanitizer, Core Dump Analysis"],
+            ["Domains:", "Telecom (Amdocs), Travel (Sabre), Distributed Systems"]
+        ]
+        
+        for category, items in skills_data:
+            story.append(Paragraph(f"• <b>{category}</b>  {items}", bullet_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Experience with better formatting
+        story.append(Paragraph("PROFESSIONAL EXPERIENCE", section_style))
+        
+        # Technical Lead
+        story.append(Paragraph("<b>Technical Lead</b> - Coforge (Client: Sabre)", styles['Heading3']))
+        story.append(Paragraph("<i>Nov 2025 - Present | Bangalore</i>", styles['Italic']))
+        story.append(Paragraph("• Leading development of core C++ modules for large-scale airline reservation systems", bullet_style))
+        story.append(Paragraph("• Designed and optimized multi-threaded backend components, achieved <b>30% performance improvement</b>", bullet_style))
+        story.append(Paragraph("• Resolved complex race conditions in long-running Linux services using GDB and sanitizers", bullet_style))
+        story.append(Paragraph("• Improved performance-critical paths through CPU profiling (perf) and memory optimization", bullet_style))
+        story.append(Spacer(1, 0.05*inch))
+        
+        # Senior Consultant
+        story.append(Paragraph("<b>Senior Consultant</b> - Capgemini", styles['Heading3']))
+        story.append(Paragraph("<i>Mar 2025 - Nov 2025 | Gurugram</i>", styles['Italic']))
+        story.append(Paragraph("• Developed high-availability C++ backend modules for enterprise clients", bullet_style))
+        story.append(Paragraph("• Modernized legacy codebase with C++17 features, improving maintainability", bullet_style))
+        story.append(Spacer(1, 0.05*inch))
+        
+        # SDE-2
+        story.append(Paragraph("<b>SDE-2</b> - CSG", styles['Heading3']))
+        story.append(Paragraph("<i>Jun 2022 - Mar 2025 | Bangalore</i>", styles['Italic']))
+        story.append(Paragraph("• Built scalable C++ backend services for high-throughput transaction processing", bullet_style))
+        story.append(Paragraph("• Implemented concurrency control mechanisms in distributed modules", bullet_style))
+        story.append(Spacer(1, 0.05*inch))
+        
+        # Amdocs
+        story.append(Paragraph("<b>Software Developer</b> - Amdocs", styles['Heading3']))
+        story.append(Paragraph("<i>Jun 2019 - Jun 2022 | Pune</i>", styles['Italic']))
+        story.append(Paragraph("• Developed Linux-based telecom systems using Modern C++ (C++11/14)", bullet_style))
+        story.append(Paragraph("• Implemented IPC mechanisms for high-throughput environments", bullet_style))
+        story.append(Spacer(1, 0.1*inch))
+        
+        # Education
+        story.append(Paragraph("EDUCATION", section_style))
+        story.append(Paragraph("<b>Master's Degree in Computer Science</b> - Thapar Institute of Engineering and Technology", normal_style))
+        
+        # Build PDF
+        doc.build(story)
+        print(f"✅ Resume generated: {custom_path}")
+        return custom_path
     
     # ============= CLEAN JOB TITLE =============
     def clean_job_title(self, title: str) -> str:
@@ -482,15 +658,13 @@ class JobHunter3000:
     
     # ============= GENERATE COVER LETTER =============
     def generate_personalized_letter(self, job: Dict, name: str) -> str:
-        """Generate personalized cover letter with EXACT spacing"""
+        """Generate personalized cover letter"""
         
         clean_title = self.clean_job_title(job['title'])
         
         prompt = f"""
-        Write a professional job application email with EXACT spacing:
+        Write a professional job application email to {name} at {job['company']}:
         
-        To: {name}
-        Company: {job['company']}
         Position: {clean_title}
         
         Candidate: Anil Kumar
@@ -498,30 +672,12 @@ class JobHunter3000:
         - Expertise: Modern C++, distributed systems
         - Key achievement: 30% performance improvement
         
-        CRITICAL SPACING RULES:
-        1. EXACTLY one blank line between paragraphs (NOT two)
-        2. NO blank lines at start or end
-        3. Each paragraph: 2-3 sentences only
-        4. Total: 4 paragraphs
-        
-        FORMAT (copy EXACTLY):
-        Dear {name},
-        
-        I am writing to express my interest in the {clean_title} position at {job['company']}. I am currently a Technical Lead at Sabre/Coforge with 6.5+ years of experience building high-performance backend systems using Modern C++.
-        
-        In my current role, I led a team to optimize multi-threaded components, achieving a 30% improvement in system performance. My expertise includes distributed systems, low-latency programming, and performance optimization on Linux platforms.
-        
-        I am particularly drawn to {job['company']} because of its reputation for innovation in the tech industry. The opportunity to contribute to cutting-edge projects aligns perfectly with my career aspirations.
-        
-        I would welcome the opportunity to discuss how my experience can benefit your team. I am available for an interview at your convenience.
-        
-        Thanks,
-        Anil Kumar
+        Write 4 short paragraphs with single line breaks only.
+        Sound professional but natural.
         """
         
         letter = self._get_ai_response(prompt, "gpt-3.5-turbo")
         
-        # Fix any spacing issues
         if letter:
             letter = re.sub(r'\n\s*\n\s*\n', '\n\n', letter)
             letter = '\n'.join(line.rstrip() for line in letter.split('\n'))
@@ -529,14 +685,13 @@ class JobHunter3000:
         return letter
     
     def generate_cover_letter(self, job: Dict) -> str:
-        """Generate standard cover letter with EXACT spacing"""
+        """Generate standard cover letter"""
         
         clean_title = self.clean_job_title(job['title'])
         
         prompt = f"""
-        Write a professional job application email with EXACT spacing:
+        Write a professional job application email for {job['company']}:
         
-        Company: {job['company']}
         Position: {clean_title}
         
         Candidate: Anil Kumar
@@ -544,97 +699,17 @@ class JobHunter3000:
         - Expertise: Modern C++, distributed systems
         - Key achievement: 30% performance improvement
         
-        CRITICAL SPACING RULES:
-        1. EXACTLY one blank line between paragraphs (NOT two)
-        2. NO blank lines at start or end
-        3. Each paragraph: 2-3 sentences only
-        4. Total: 4 paragraphs
-        
-        FORMAT (copy EXACTLY):
-        Dear Hiring Team at {job['company']},
-        
-        I am writing to express my interest in the {clean_title} position at {job['company']}. I am currently a Technical Lead at Sabre/Coforge with 6.5+ years of experience building high-performance backend systems using Modern C++.
-        
-        In my current role, I led a team to optimize multi-threaded components, achieving a 30% improvement in system performance. My expertise includes distributed systems, low-latency programming, and performance optimization on Linux platforms.
-        
-        I am particularly drawn to {job['company']} because of its reputation for innovation and technical excellence. The opportunity to work on challenging problems aligns perfectly with my skills and experience.
-        
-        I would welcome the opportunity to discuss how my experience can benefit your team. I am available for an interview at your convenience.
-        
-        Thanks,
-        Anil Kumar
+        Write 4 short paragraphs with single line breaks only.
+        Sound professional but natural.
         """
         
         letter = self._get_ai_response(prompt, "gpt-3.5-turbo")
         
-        # Fix any spacing issues
         if letter:
             letter = re.sub(r'\n\s*\n\s*\n', '\n\n', letter)
             letter = '\n'.join(line.rstrip() for line in letter.split('\n'))
         
         return letter
-    
-    # ============= GENERATE RESUME =============
-    def generate_professional_resume(self, job: Dict) -> str:
-        """Generate customized resume PDF"""
-        
-        custom_path = f"custom_resumes/Anil_Kumar_{job['company'].replace(' ', '_')}.pdf"
-        os.makedirs("custom_resumes", exist_ok=True)
-        
-        doc = SimpleDocTemplate(custom_path, pagesize=letter)
-        styles = getSampleStyleSheet()
-        story = []
-        
-        # Styles
-        name_style = ParagraphStyle('Name', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor('#1a4d8c'))
-        contact_style = ParagraphStyle('Contact', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#777777'))
-        section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#1a4d8c'), spaceAfter=8)
-        bullet_style = ParagraphStyle('Bullet', parent=styles['Normal'], fontSize=10, leftIndent=20)
-        
-        # Header
-        story.append(Paragraph("ANIL KUMAR", name_style))
-        story.append(Paragraph("📧 anilkruz@gmail.com | 📍 Bangalore | 📱 +91-9557846156", contact_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Summary
-        story.append(Paragraph("PROFESSIONAL SUMMARY", section_style))
-        summary = f"Technical Lead with 6.5+ years at Sabre/Coforge, specializing in Modern C++ and distributed systems. Proven track record of 30% performance improvement. Seeking to leverage expertise at {job['company']}."
-        story.append(Paragraph(summary, bullet_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Skills
-        story.append(Paragraph("TECHNICAL SKILLS", section_style))
-        skills = [
-            "• Programming: Modern C++ (11/14/17/20), C, STL",
-            "• Systems: Linux, IPC, TCP/IP",
-            "• Concurrency: Multithreading, Mutex, Condition Variables",
-            "• Tools: GDB, Git, CMake, perf, Valgrind"
-        ]
-        for skill in skills:
-            story.append(Paragraph(skill, bullet_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Experience
-        story.append(Paragraph("PROFESSIONAL EXPERIENCE", section_style))
-        experience = [
-            "• Technical Lead at Coforge (Sabre) - Nov 2025 to Present",
-            "  - Leading C++ modules for airline reservation systems",
-            "  - Achieved 30% performance improvement",
-            "",
-            "• Senior Consultant at Capgemini - Mar 2025 to Nov 2025",
-            "  - High-availability C++ backend modules",
-            "",
-            "• SDE-2 at CSG - Jun 2022 to Mar 2025",
-            "  - Modern C++ backend services",
-            "",
-            "• Software Developer at Amdocs - Jun 2019 to Jun 2022",
-            "  - Linux-based telecom systems using C++11/14"
-        ]
-        for line in experience:
-            story.append(Paragraph(line, bullet_style))
-        
-        doc.build(story)
-        return custom_path
     
     # ============= SEND EMAIL =============
     def send_email(self, job: Dict, to_email: str, cover_letter: str, resume_path: str) -> bool:
@@ -646,13 +721,28 @@ class JobHunter3000:
         
         # Clean subject
         clean_title = self.clean_job_title(job['title'])
-        msg["Subject"] = f"{clean_title} - Anil Kumar - 6.5+ years C++"
+        msg["Subject"] = f"Application for {clean_title} - Anil Kumar - 6.5+ years C++"
         
-        # Email body - preserve single line breaks
+        # Email body
         html_body = f"""
+        <!DOCTYPE html>
         <html>
-        <body style="font-family: Arial; line-height: 1.5; max-width: 600px; margin: 0 auto;">
-            {cover_letter.replace(chr(10), '<br>')}
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .signature {{ margin-top: 20px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                {cover_letter.replace(chr(10), '<br><br>')}
+                <div class="signature">
+                    <hr style="border: none; border-top: 1px solid #eee;">
+                    <p style="font-size: 12px;">Anil Kumar | +91-9557846156 | anilkruz@gmail.com</p>
+                </div>
+            </div>
         </body>
         </html>
         """
@@ -665,7 +755,7 @@ class JobHunter3000:
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(f.read())
                 encoders.encode_base64(part)
-                part.add_header("Content-Disposition", "attachment; filename=Anil_Kumar_Resume.pdf")
+                part.add_header("Content-Disposition", f"attachment; filename=Anil_Kumar_Resume.pdf")
                 msg.attach(part)
         except Exception as e:
             print(f"❌ Resume attachment failed: {e}")
@@ -676,6 +766,7 @@ class JobHunter3000:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                 server.login(self.email, self.app_password)
                 server.send_message(msg)
+            print(f"✅ Email sent to {to_email}")
             return True
         except Exception as e:
             print(f"❌ Email send failed: {e}")
@@ -694,6 +785,7 @@ class JobHunter3000:
             "target_email": target["email"],
             "target_name": target.get("name"),
             "confidence": target["confidence"],
+            "type": target["type"],  # 'human' or 'generic'
             "status": "applied"
         }
         
@@ -704,7 +796,8 @@ class JobHunter3000:
             "company": job["company"],
             "title": job["title"],
             "date": datetime.now().strftime("%Y-%m-%d"),
-            "email": target["email"]
+            "email": target["email"],
+            "type": target["type"]
         })
         self._save_json(self.applied_jobs_file, self.applied_jobs)
     
@@ -770,339 +863,6 @@ class JobHunter3000:
         self._save_json(self.follow_ups_file, self.follow_ups)
         return sent
     
-    # ============= INTERVIEW SCHEDULER =============
-    def schedule_interview(self, company: str, job_title: str, date: str, time: str, meeting_link: str = ""):
-        """Schedule interview and send reminder"""
-        
-        interview = {
-            "company": company,
-            "job_title": job_title,
-            "date": date,
-            "time": time,
-            "meeting_link": meeting_link,
-            "reminder_sent": False,
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        self.interviews.append(interview)
-        self._save_json(self.interviews_file, self.interviews)
-        
-        # Send confirmation email
-        html = f"""
-        <html>
-        <body style="font-family: Arial;">
-            <h2>✅ Interview Scheduled!</h2>
-            <p><b>Company:</b> {company}</p>
-            <p><b>Position:</b> {job_title}</p>
-            <p><b>Date:</b> {date}</p>
-            <p><b>Time:</b> {time}</p>
-            {f'<p><b>Link:</b> <a href="{meeting_link}">{meeting_link}</a></p>' if meeting_link else ''}
-            
-            <h3>Preparation Checklist:</h3>
-            <ul>
-                <li>Review company background</li>
-                <li>Practice C++ concepts</li>
-                <li>Prepare questions</li>
-                <li>Test audio/video 15 mins before</li>
-            </ul>
-        </body>
-        </html>
-        """
-        
-        msg = MIMEText(html, "html")
-        msg["Subject"] = f"🎯 Interview: {company} - {job_title}"
-        msg["From"] = self.email
-        msg["To"] = self.email
-        
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(self.email, self.app_password)
-                server.send_message(msg)
-            print(f"✅ Interview scheduled with {company}")
-            return True
-        except:
-            return False
-    
-    # ============= SEND INTERVIEW REMINDERS =============
-    def send_interview_reminders(self):
-        """Send reminders for upcoming interviews"""
-        
-        today = datetime.now()
-        reminders_sent = 0
-        
-        for interview in self.interviews:
-            if interview.get("reminder_sent"):
-                continue
-            
-            try:
-                interview_date = datetime.strptime(f"{interview['date']} {interview['time']}", "%Y-%m-%d %H:%M")
-                days_until = (interview_date - today).days
-                
-                if 0 <= days_until <= 1:  # 0 or 1 day before
-                    
-                    html = f"""
-                    <html>
-                    <body style="font-family: Arial;">
-                        <h2>🎯 Interview Tomorrow!</h2>
-                        <p><b>Company:</b> {interview['company']}</p>
-                        <p><b>Position:</b> {interview['job_title']}</p>
-                        <p><b>Date:</b> {interview['date']}</p>
-                        <p><b>Time:</b> {interview['time']}</p>
-                        
-                        <h3>Final Checklist:</h3>
-                        <ul>
-                            <li>✅ Resume printed/ready</li>
-                            <li>✅ Company research done</li>
-                            <li>✅ Questions prepared</li>
-                            <li>✅ Setup ready 30 mins early</li>
-                        </ul>
-                        
-                        <p>Good luck! 💪</p>
-                    </body>
-                    </html>
-                    """
-                    
-                    msg = MIMEText(html, "html")
-                    msg["Subject"] = f"🎯 Interview Tomorrow: {interview['company']}"
-                    msg["From"] = self.email
-                    msg["To"] = self.email
-                    
-                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                        server.login(self.email, self.app_password)
-                        server.send_message(msg)
-                    
-                    interview["reminder_sent"] = True
-                    reminders_sent += 1
-                    print(f"✅ Reminder sent for {interview['company']}")
-            except:
-                continue
-        
-        self._save_json(self.interviews_file, self.interviews)
-        return reminders_sent
-    
-    # ============= GENERATE LEARNING TASKS =============
-    def generate_learning_tasks(self) -> str:
-        """Generate daily C++ learning tasks"""
-        
-        today = datetime.now().strftime("%Y-%m-%d")
-        
-        # Check if already generated today
-        if today in self.learning_tasks:
-            return self.learning_tasks[today]
-        
-        prompt = """
-        Generate 5 C++ and distributed systems learning tasks for today:
-        
-        Focus areas:
-        - Modern C++ (C++17/20 features)
-        - Distributed systems concepts
-        - Low-latency programming
-        - System design for interviews
-        
-        Format as bullet points with specific topics.
-        Keep it practical and interview-focused.
-        """
-        
-        tasks = self._get_ai_response(prompt, "gpt-3.5-turbo")
-        
-        # Cache it
-        self.learning_tasks[today] = tasks
-        self._save_json(self.learning_tasks_file, self.learning_tasks)
-        
-        return tasks
-    
-    # ============= GENERATE MANUAL REVIEW HTML =============
-    def generate_manual_review_html(self):
-        """Generate HTML report of emails needing review"""
-        
-        if not self.manual_review:
-            return
-        
-        html = """
-        <html>
-        <head>
-            <title>Manual Email Review Required</title>
-            <style>
-                body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-                h1 { color: #1a4d8c; }
-                table { border-collapse: collapse; width: 100%; background: white; }
-                th { background: #1a4d8c; color: white; padding: 12px; text-align: left; }
-                td { padding: 12px; border: 1px solid #ddd; }
-                .review { background: #fff3cd; }
-                .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }
-                .stat-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                .stat-number { font-size: 24px; font-weight: bold; color: #1a4d8c; }
-            </style>
-        </head>
-        <body>
-            <h1>📝 Manual Email Review Dashboard</h1>
-            
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-number">{}</div>
-                    <div>Pending Reviews</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{}</div>
-                    <div>Total Applications</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{}</div>
-                    <div>Follow-ups Scheduled</div>
-                </div>
-            </div>
-            
-            <h2>Emails Requiring Manual Review</h2>
-            <table>
-                <tr>
-                    <th>Company</th>
-                    <th>Position</th>
-                    <th>Date</th>
-                    <th>Reason</th>
-                    <th>Action</th>
-                </tr>
-        """.format(
-            len([r for r in self.manual_review if r.get('status') == 'needs_manual_review']),
-            len(self.responses),
-            len([f for f in self.follow_ups if f['status'] == 'scheduled'])
-        )
-        
-        for item in self.manual_review[-10:]:
-            if item.get('status') == 'needs_manual_review':
-                html += f"""
-                <tr class="review">
-                    <td><b>{item['company']}</b></td>
-                    <td>{item['job_title'][:50]}</td>
-                    <td>{item['date']}</td>
-                    <td>{item.get('reason', 'No valid emails found')}</td>
-                    <td><a href="{item.get('url', '#')}" target="_blank" style="background: #1a4d8c; color: white; padding: 5px 10px; text-decoration: none; border-radius: 5px;">View Job</a></td>
-                </tr>
-                """
-        
-        # Add recent applications
-        html += """
-            </table>
-            
-            <h2>Recent Successful Applications</h2>
-            <table>
-                <tr>
-                    <th>Company</th>
-                    <th>Position</th>
-                    <th>Date</th>
-                    <th>Email</th>
-                    <th>Confidence</th>
-                </tr>
-        """
-        
-        recent = list(self.responses.items())[-5:]
-        for key, data in recent:
-            html += f"""
-                <tr>
-                    <td><b>{data['company']}</b></td>
-                    <td>{data['job_title'][:40]}</td>
-                    <td>{data['sent_date']}</td>
-                    <td>{data['target_email']}</td>
-                    <td>{data['confidence']}%</td>
-                </tr>
-            """
-        
-        html += """
-            </table>
-            
-            <h2>Upcoming Follow-ups</h2>
-            <table>
-                <tr>
-                    <th>Company</th>
-                    <th>Position</th>
-                    <th>Follow-up Date</th>
-                </tr>
-        """
-        
-        for fu in self.follow_ups[-5:]:
-            if fu['status'] == 'scheduled':
-                html += f"""
-                <tr>
-                    <td>{fu['company']}</td>
-                    <td>{fu['job_title'][:40]}</td>
-                    <td>{fu['follow_up_date']}</td>
-                </tr>
-                """
-        
-        html += """
-            </table>
-            
-            <h2>Today's Learning Tasks</h2>
-            <div style="background: white; padding: 20px; border-radius: 10px;">
-        """
-        
-        tasks = self.generate_learning_tasks()
-        html += tasks.replace('\n', '<br>')
-        
-        html += """
-            </div>
-            
-            <p style="margin-top: 20px; color: #666;">Generated: {}</p>
-        </body>
-        </html>
-        """.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        
-        with open("dashboard.html", "w") as f:
-            f.write(html)
-        
-        print("✅ Dashboard generated: dashboard.html")
-    
-    # ============= SEND DAILY REPORT =============
-    def send_daily_report(self, successful: int, total: int):
-        """Send daily report email"""
-        
-        today = datetime.now().strftime("%Y-%m-%d")
-        
-        html = f"""
-        <html>
-        <body style="font-family: Arial; line-height: 1.5;">
-            <h2 style="color: #1a4d8c;">📊 Daily Job Report - {today}</h2>
-            
-            <h3>Today's Summary:</h3>
-            <ul>
-                <li>✅ Applications Sent: {successful}/{total}</li>
-                <li>📊 Total Applications: {len(self.responses)}</li>
-                <li>⏳ Pending Follow-ups: {len([f for f in self.follow_ups if f['status'] == 'scheduled'])}</li>
-                <li>🎯 Interviews Scheduled: {len(self.interviews)}</li>
-                <li>📝 Manual Review: {len([r for r in self.manual_review if r.get('status') == 'needs_manual_review'])}</li>
-            </ul>
-            
-            <h3>Today's Learning Tasks:</h3>
-            <div style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
-                {self.generate_learning_tasks().replace(chr(10), '<br>')}
-            </div>
-            
-            <h3>Next Steps:</h3>
-            <ol>
-                <li>Check dashboard.html for manual reviews</li>
-                <li>Prepare for any scheduled interviews</li>
-                <li>Complete today's learning tasks</li>
-            </ol>
-            
-            <hr>
-            <p style="color: #666;">Target: 35-50 LPA | Keep going! 💪</p>
-        </body>
-        </html>
-        """
-        
-        msg = MIMEText(html, "html")
-        msg["Subject"] = f"📊 Daily Job Report - {today}"
-        msg["From"] = self.email
-        msg["To"] = self.email
-        
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(self.email, self.app_password)
-                server.send_message(msg)
-            print("✅ Daily report email sent")
-            return True
-        except:
-            return False
-    
     # ============= SEND APPLICATION (MAIN) =============
     def send_application_zero_bounce(self, job: Dict) -> bool:
         """
@@ -1128,9 +888,10 @@ class JobHunter3000:
             self._save_json(self.manual_review_file, self.manual_review)
             return False
         
-        # Try each target
+        # Try each target (prioritize human emails)
         for target in targets[:2]:
-            print(f"📧 Trying: {target['email']} (confidence: {target['confidence']}%)")
+            email_type = "👤 HUMAN" if target['type'] == 'human' else "📧 GENERIC"
+            print(f"📧 Trying {email_type}: {target['email']} (confidence: {target['confidence']}%)")
             
             if target.get('name'):
                 cover_letter = self.generate_personalized_letter(job, target['name'])
@@ -1184,13 +945,10 @@ class JobHunter3000:
         # Send follow-ups
         follow_sent = self.send_follow_ups()
         
-        # Send interview reminders
-        reminder_sent = self.send_interview_reminders()
-        
         # Generate basic dashboard
         self.generate_manual_review_html()
         
-        # ============= ADVANCED FEATURES FROM FEATURES.PY =============
+        # Advanced features
         print("\n📊 Generating advanced analytics...")
         try:
             analytics = self.advanced.response_analytics()
@@ -1200,11 +958,10 @@ class JobHunter3000:
         except Exception as e:
             print(f"   ⚠️ Analytics failed: {e}")
 
-        # Research top 2 companies
+        # Research top companies
         for job in jobs_to_apply[:2]:
             print(f"\n🔍 Researching {job['company']}...")
             try:
-                # Note: research_company uses OpenAI, not Tavily
                 research = self.advanced.research_company(job['company'])
                 with open(f"research_{job['company'].replace(' ', '_')}.txt", 'w') as f:
                     f.write(research)
@@ -1212,30 +969,12 @@ class JobHunter3000:
             except Exception as e:
                 print(f"   ❌ Research failed: {e}")
 
-        # Track competitors weekly (once a week)
-        if datetime.now().weekday() == 0:  # Monday
-            print("\n📈 Tracking competitor trends...")
-            try:
-                trends = self.advanced.track_competitors()
-                print("✅ Competitor analysis done")
-            except Exception as e:
-                print(f"❌ Competitor tracking failed: {e}")
-
         # Generate advanced dashboard
         try:
             self.advanced.generate_advanced_dashboard()
             print("✅ Advanced dashboard generated")
         except Exception as e:
             print(f"❌ Advanced dashboard failed: {e}")
-
-        # Improved job search for next run (Note: this uses Tavily in features.py)
-        # You may want to comment this out or modify features.py
-        try:
-            # better_jobs = self.advanced.improved_job_search()
-            # print(f"\n🎯 Found {len(better_jobs)} premium jobs for next time")
-            pass
-        except Exception as e:
-            print(f"❌ Job search failed: {e}")
         
         # Send daily report
         self.send_daily_report(successful, len(jobs_to_apply))
@@ -1245,9 +984,7 @@ class JobHunter3000:
         print(f"✅ Daily hunt completed!")
         print(f"   📨 Successfully sent: {successful}/{len(jobs_to_apply)}")
         print(f"   📅 Follow-ups sent: {follow_sent}")
-        print(f"   🎯 Reminders sent: {reminder_sent}")
         print(f"   📝 Manual review: {len([r for r in self.manual_review if r.get('status') == 'needs_manual_review'])}")
-        print(f"   📊 Dashboard: dashboard.html")
         print(f"{'='*70}")
 
 if __name__ == "__main__":
