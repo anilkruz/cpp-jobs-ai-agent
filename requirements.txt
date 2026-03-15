@@ -8,3 +8,4 @@ validate-email-address>=1.0.0
 emailsherlock>=0.1.0
 aiodns>=3.0.0
 asyncio>=3.4.3
+matplotlib>=3.5.0
