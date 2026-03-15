@@ -6,3 +6,5 @@ reportlab>=4.0.0
 dnspython>=2.4.0
 validate-email-address>=1.0.0
 emailsherlock>=0.1.0
+aiodns>=3.0.0
+asyncio>=3.4.3
