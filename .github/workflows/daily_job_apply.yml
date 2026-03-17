@@ -30,6 +30,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wkhtmltopdf
+          sudo apt-get install -y chromium-browser  # Required for Selenium
       
       - name: Install Python dependencies
         run: |
@@ -42,7 +43,7 @@ jobs:
           mkdir -p logs
           
           # Create all JSON files if they don't exist
-          for file in applied_jobs.json responses.json follow_ups.json interviews.json manual_review_emails.json validated_emails.json learning_tasks.json; do
+          for file in applied_jobs.json responses.json follow_ups.json interviews.json manual_review_emails.json validated_emails.json learning_tasks.json auto_apply_log.json competitor_trends.json linkedin_connections.json; do
             if [ ! -f $file ]; then 
               if [ "$file" = "responses.json" ]; then
                 echo "{}" > $file
@@ -68,6 +69,10 @@ jobs:
           echo "OPENAI_API_KEY is set: ${{ secrets.OPENAI_API_KEY != '' }}"
           echo "SERPAPI_KEY is set: ${{ secrets.SERPAPI_KEY != '' }}"
           echo "APP_PASSWORD is set: ${{ secrets.APP_PASSWORD != '' }}"
+          echo "LINKEDIN_EMAIL is set: ${{ secrets.LINKEDIN_EMAIL != '' }}"
+          echo "LINKEDIN_PASSWORD is set: ${{ secrets.LINKEDIN_PASSWORD != '' }}"
+          echo "TELEGRAM_BOT_TOKEN is set: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}"
+          echo "TELEGRAM_CHAT_ID is set: ${{ secrets.TELEGRAM_CHAT_ID != '' }}"
       
       - name: Run Job Hunter
         env:
@@ -75,6 +80,8 @@ jobs:
           EMAIL: ${{ secrets.EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
         run: |
           python daily_job_apply.py 2>&1 | tee logs/daily_$(date +'%Y%m%d_%H%M%S').log
       
@@ -89,6 +96,7 @@ jobs:
             *.json
             custom_resumes/
             research_*.txt
+            linkedin_*.html
           retention-days: 7
       
       - name: Commit and push tracker files
@@ -104,8 +112,8 @@ jobs:
           # Add all JSON files
           git add *.json 2>/dev/null || true
           
-          # Add HTML dashboards
-          git add dashboard.html advanced_dashboard.html 2>/dev/null || true
+          # Add HTML dashboards and reports
+          git add *.html 2>/dev/null || true
           
           # Add research files
           git add research_*.txt 2>/dev/null || true
@@ -130,7 +138,7 @@ jobs:
             echo "ℹ️ No changes to commit"
           fi
       
-      - name: Send Telegram Notification (Optional)
+      - name: Send Telegram Notification
         if: always()
         uses: appleboy/telegram-action@master
         with:
@@ -142,6 +150,9 @@ jobs:
             📅 Date: $(date +'%Y-%m-%d')
             📊 Status: ${{ job.status }}
             
-            Check dashboard for details!
+            📁 Check artifacts for:
+            • LinkedIn Connections Report
+            • Advanced Dashboard
+            • Application Logs
           format: markdown
         continue-on-error: true
