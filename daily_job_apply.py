@@ -13,15 +13,29 @@ from email import encoders
 from typing import List, Dict, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib import colors
-from reportlab.lib.fonts import addMapping
 import validate_email_address
 from features import AdvancedFeatures
+
+# Optional: Selenium for LinkedIn automation
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    print("⚠️ Selenium not installed. Auto-connect will use manual mode.")
 
 # Load environment variables
 load_dotenv()
@@ -37,11 +51,12 @@ class JobHunter3000:
         self.app_password = os.getenv("APP_PASSWORD")
         self.phone = "+91-9557846156"
         
-        # SerpAPI key for job search
+        # LinkedIn credentials
+        self.linkedin_email = os.getenv("LINKEDIN_EMAIL")
+        self.linkedin_password = os.getenv("LINKEDIN_PASSWORD")
+        
+        # SerpAPI key
         self.serpapi_key = os.getenv("SERPAPI_KEY")
-        if not self.serpapi_key:
-            print("⚠️ WARNING: SERPAPI_KEY not found in environment variables")
-            print("💡 Add SERPAPI_KEY to GitHub Secrets for live job search")
         
         # Profile
         self.profile = {
@@ -68,9 +83,14 @@ class JobHunter3000:
         self.valid_emails_file = "validated_emails.json"
         self.interviews_file = "interviews.json"
         self.learning_tasks_file = "learning_tasks.json"
+        self.recruiters_file = "linkedin_recruiters.json"
+        self.linkedin_dms_file = "linkedin_dms.json"
+        self.connections_file = "linkedin_connections.json"
         
-        # Daily limit
-        self.daily_apply_limit = 5
+        # Daily limits
+        self.daily_apply_limit = 3
+        self.daily_connect_limit = 5
+        self.max_connections_per_day = 20  # LinkedIn's limit
         
         # Load all data
         self.applied_jobs = self._load_json(self.applied_jobs_file, [])
@@ -80,11 +100,14 @@ class JobHunter3000:
         self.validated_emails = self._load_json(self.valid_emails_file, {})
         self.interviews = self._load_json(self.interviews_file, [])
         self.learning_tasks = self._load_json(self.learning_tasks_file, {})
+        self.recruiters = self._load_json(self.recruiters_file, [])
+        self.linkedin_dms = self._load_json(self.linkedin_dms_file, [])
+        self.connections = self._load_json(self.connections_file, [])
         
         # Initialize advanced features
         self.advanced = AdvancedFeatures(self)
         
-        # Email blacklist - known invalid domains
+        # Email blacklist
         self.blacklist_domains = [
             'responsive.com', 'tekit.com', 'example.com', 'test.com',
             'domain.com', 'company.com', 'yourcompany.com', 'sample.com',
@@ -92,353 +115,333 @@ class JobHunter3000:
             'mailinator.com', 'guerrillamail.com', 'throwaway.com'
         ]
         
-        # Generic email prefixes to avoid (LOW CONFIDENCE)
+        # Generic email prefixes to AVOID
         self.generic_prefixes = [
             'hr', 'careers', 'jobs', 'recruitment', 'talent',
             'info', 'contact', 'support', 'admin', 'hello',
-            'career', 'job', 'hiring', 'recruiter'
-        ]
-        
-        # Human email patterns (HIGH CONFIDENCE)
-        self.human_patterns = [
-            r'^[a-z]+\.[a-z]+@',  # first.last@
-            r'^[a-z]+\.[a-z]+\.[a-z]+@',  # first.m.last@
-            r'^[a-z][a-z][a-z]+@',  # initials based
+            'career', 'job', 'hiring'
         ]
     
-    def _load_json(self, file_path, default):
-        """Load JSON file with error handling"""
-        try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
-                    return json.load(f)
-        except:
-            pass
-        return default
-    
-    def _save_json(self, file_path, data):
-        """Save JSON file"""
-        with open(file_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    
-    def _get_ai_response(self, prompt: str, model: str = "gpt-4") -> str:
-        """Get response from OpenAI with error handling"""
-        try:
-            response = self.openai.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            print(f"⚠️ AI Error: {e}")
-            return ""
-    
-    # ============= JOB SEARCH USING SERPAPI =============
-    def get_recent_jobs(self, days: int = 2) -> List[Dict]:
-        """Get jobs using SerpAPI (free - 100 searches/month)"""
+    # ============= FIND RECRUITERS ON LINKEDIN =============
+    def find_linkedin_recruiters(self, company: str, job_title: str) -> List[Dict]:
+        """Find recruiters on LinkedIn for specific company"""
         
-        print(f"🔍 Searching for C++ jobs using SerpAPI...")
+        print(f"🔍 Searching for recruiters at {company}...")
         
-        if not self.serpapi_key:
-            print("❌ SerpAPI key not found - using fallback jobs")
-            return self._get_fallback_jobs()
-        
-        jobs = []
-        
-        # SerpAPI Google Jobs search
-        params = {
-            "api_key": self.serpapi_key,
-            "engine": "google_jobs",
-            "q": "C++ developer Bangalore",
-            "hl": "en",
-            "gl": "in",
-            "chips": "date_posted:today"
-        }
-        
-        try:
-            print("   📡 Fetching jobs from SerpAPI...")
-            response = requests.get(
-                "https://serpapi.com/search",
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                jobs_results = data.get("jobs_results", [])
-                
-                if not jobs_results:
-                    print("   ⚠️ No jobs found from SerpAPI")
-                    return self._get_fallback_jobs()
-                
-                for job in jobs_results[:self.daily_apply_limit * 2]:
-                    title = job.get("title", "Unknown")
-                    company = job.get("company_name", "Unknown")
-                    description = job.get("description", "")
-                    
-                    # Get apply link
-                    related_links = job.get("related_links", [])
-                    apply_url = ""
-                    for link in related_links:
-                        if link.get("link", ""):
-                            apply_url = link.get("link")
-                            break
-                    
-                    job_data = {
-                        "title": title,
-                        "company": company,
-                        "url": apply_url,
-                        "content": description,
-                        "date": datetime.now().strftime("%Y-%m-%d"),
-                        "source": "serpapi"
-                    }
-                    jobs.append(job_data)
-                    print(f"   ✅ Found: {title[:40]} at {company}")
-            else:
-                print(f"❌ SerpAPI error: {response.status_code}")
-                return self._get_fallback_jobs()
-                
-        except Exception as e:
-            print(f"❌ SerpAPI exception: {e}")
-            return self._get_fallback_jobs()
-        
-        print(f"✅ Total jobs found: {len(jobs)}")
-        return jobs[:self.daily_apply_limit * 2]
-    
-    def _get_fallback_jobs(self) -> List[Dict]:
-        """Fallback hardcoded jobs when API fails"""
-        print("📋 Using fallback jobs for testing...")
-        
-        return [
-            {
-                "title": "Senior C++ Developer - Distributed Systems",
-                "company": "Cisco",
-                "url": "https://www.linkedin.com/jobs/view/123456",
-                "content": "We are looking for a Senior C++ Developer with expertise in distributed systems, multithreading, and low-latency applications. 6+ years of experience required. Location: Bangalore.",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Lead C++ Engineer - Fintech",
-                "company": "Goldman Sachs",
-                "url": "https://www.linkedin.com/jobs/view/123457",
-                "content": "Goldman Sachs is hiring a Lead C++ Engineer for our fintech division. Experience with high-frequency trading systems, C++17/20, and performance optimization required.",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Distributed Systems Engineer",
-                "company": "Microsoft",
-                "url": "https://www.linkedin.com/jobs/view/123458",
-                "content": "Microsoft is looking for a Distributed Systems Engineer to work on Azure. Strong C++ skills and experience with distributed systems required.",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Low Latency C++ Developer",
-                "company": "Uber",
-                "url": "https://www.linkedin.com/jobs/view/123459",
-                "content": "Uber is hiring a Low Latency C++ Developer for our real-time matching systems. Experience with multithreading and performance optimization required.",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            },
-            {
-                "title": "Senior Software Engineer - C++",
-                "company": "Dell Technologies",
-                "url": "https://www.linkedin.com/jobs/view/123460",
-                "content": "Dell is seeking a Senior Software Engineer with strong C++ skills to work on distributed storage systems. Location: Bangalore.",
-                "date": datetime.now().strftime("%Y-%m-%d")
-            }
+        queries = [
+            f"site:linkedin.com/in/ {company} recruiter Bangalore",
+            f"site:linkedin.com/in/ {company} talent acquisition",
+            f"site:linkedin.com/in/ {company} hiring manager",
+            f"site:linkedin.com/in/ Technical Recruiter {company}"
         ]
-    
-    # ============= IMPROVED EMAIL VALIDATION =============
-    def is_human_email(self, email: str) -> bool:
-        """Check if email looks like a human (not generic)"""
-        local_part = email.split('@')[0].lower()
         
-        # Check generic prefixes
-        if local_part in self.generic_prefixes:
-            return False
+        found_recruiters = []
         
-        # Check patterns that indicate human
-        if '.' in local_part and not any(x in local_part for x in ['noreply', 'no-reply']):
-            return True
-        
-        # Check length (humans usually have 5-20 chars)
-        if 5 <= len(local_part) <= 20:
-            return True
-        
-        return False
-    
-    def validate_email_ultimate(self, email: str, company: str) -> Dict:
-        """
-        Ultimate email validation with multiple checks
-        Returns: {'valid': bool, 'confidence': int, 'reason': str, 'email': str, 'type': str}
-        """
-        
-        result = {
-            'valid': False,
-            'confidence': 0,
-            'reason': '',
-            'email': email,
-            'type': 'generic'  # default type
-        }
-        
-        # Check 1: Basic format
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(email_pattern, email):
-            result['reason'] = 'Invalid email format'
-            return result
-        
-        domain = email.split('@')[1]
-        local_part = email.split('@')[0].lower()
-        
-        # Check 2: Blacklist domains
-        if any(black in domain for black in self.blacklist_domains):
-            result['reason'] = 'Domain in blacklist'
-            return result
-        
-        # Check 3: Determine if human or generic
-        if self.is_human_email(email):
-            result['type'] = 'human'
-            result['confidence'] = 70
-        else:
-            result['type'] = 'generic'
-            result['confidence'] = 30
-        
-        # Check 4: DNS MX records (primary validation)
-        try:
-            mx_records = dns.resolver.resolve(domain, 'MX')
-            if mx_records:
-                result['valid'] = True
-                result['confidence'] = max(result['confidence'], 80)
-                result['reason'] = 'Valid - MX records found'
-                return result
-        except Exception as e:
-            result['reason'] = f'DNS validation failed: {str(e)}'
-            return result
-        
-        return result
-    
-    # ============= FIND HUMAN EMAILS FROM JOB CONTENT =============
-    def find_human_emails_from_content(self, job: Dict) -> List[Dict]:
-        """
-        Extract human emails from job posting content
-        Returns list of {'email': str, 'name': str, 'confidence': int, 'type': str}
-        """
-        
-        results = []
-        content = job.get('content', '')
-        company = job.get('company', '')
-        
-        # Strategy 1: Look for email patterns with names (HIGHEST CONFIDENCE)
-        email_name_pattern = r'([A-Z][a-z]+ [A-Z][a-z]+).*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
-        matches = re.findall(email_name_pattern, content)
-        
-        for match in matches:
-            if len(match) >= 2:
-                name = match[0].strip()
-                email = match[1].strip()
-                
-                validation = self.validate_email_ultimate(email, company)
-                if validation['valid']:
-                    results.append({
-                        'email': email,
-                        'name': name,
-                        'confidence': validation['confidence'],
-                        'type': 'human',
-                        'source': 'direct_match'
-                    })
-        
-        # Strategy 2: Look for recruiter names and generate emails
-        name_pattern = r'(?:recruiter|hiring manager|talent acquisition|contact)[:\s]+([A-Z][a-z]+ [A-Z][a-z]+)'
-        names = re.findall(name_pattern, content, re.IGNORECASE)
-        
-        for name in names[:3]:
+        for query in queries:
             try:
-                first, last = name.lower().split()
-                company_clean = company.lower().replace(' ', '')
+                params = {
+                    "api_key": self.serpapi_key,
+                    "engine": "google",
+                    "q": query,
+                    "num": 5
+                }
                 
-                email_formats = [
-                    f"{first}.{last}@{company_clean}.com",
-                    f"{first}@{company_clean}.com",
-                    f"{first[0]}{last}@{company_clean}.com"
-                ]
+                response = requests.get(
+                    "https://serpapi.com/search",
+                    params=params,
+                    timeout=10
+                )
                 
-                for email in email_formats:
-                    validation = self.validate_email_ultimate(email, company)
-                    if validation['valid']:
-                        results.append({
-                            'email': email,
-                            'name': name,
-                            'confidence': validation['confidence'],
-                            'type': 'human',
-                            'source': 'generated_from_name'
-                        })
-                        break
-            except:
+                if response.status_code == 200:
+                    data = response.json()
+                    organic = data.get("organic_results", [])
+                    
+                    for result in organic[:3]:
+                        link = result.get("link", "")
+                        title = result.get("title", "")
+                        snippet = result.get("snippet", "")
+                        
+                        if "linkedin.com/in/" in link:
+                            # Extract name from title
+                            name_match = re.search(r'([A-Z][a-z]+ [A-Z][a-z]+)', title)
+                            name = name_match.group(1) if name_match else "Unknown"
+                            
+                            # Extract profile ID from URL
+                            profile_id = link.split("/in/")[-1].split("/")[0]
+                            
+                            # Try to find email
+                            email = self.generate_recruiter_email(name, company)
+                            
+                            found_recruiters.append({
+                                "name": name,
+                                "company": company,
+                                "profile_url": link,
+                                "profile_id": profile_id,
+                                "title": title,
+                                "email": email,
+                                "snippet": snippet,
+                                "source": query,
+                                "found_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            })
+            except Exception as e:
+                print(f"   ⚠️ Search error: {e}")
                 continue
         
-        # Strategy 3: Common HR email patterns (LOW CONFIDENCE - fallback)
-        if not results:
-            company_clean = company.lower().replace(' ', '')
-            common_patterns = [
-                f"careers@{company_clean}.com",
-                f"jobs@{company_clean}.com",
-                f"recruitment@{company_clean}.com",
-                f"talent@{company_clean}.com",
-                f"hr@{company_clean}.com"
-            ]
-            
-            for email in common_patterns:
-                validation = self.validate_email_ultimate(email, company)
-                if validation['valid']:
-                    results.append({
-                        'email': email,
-                        'confidence': validation['confidence'],
-                        'type': 'generic',
-                        'source': 'common_pattern'
-                    })
-                    break
+        # Save recruiters
+        self.recruiters.extend(found_recruiters)
+        self._save_json(self.recruiters_file, self.recruiters)
         
-        return results
+        print(f"✅ Found {len(found_recruiters)} recruiters at {company}")
+        return found_recruiters
     
-    # ============= JOB EXTRACTION =============
-    def extract_job_details(self, content: str, url: str) -> Dict:
-        """Extract job title and company from posting"""
-        
-        # Try from URL first
-        if "linkedin.com" in url:
-            patterns = [
-                r'linkedin\.com/jobs/view/([^/]+)',
-                r'linkedin\.com/jobs/([^/]+)'
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, url)
-                if match:
-                    title = match.group(1).replace('-', ' ').title()
-                    return {"title": title, "company": "Unknown"}
-        
-        # Use AI for extraction if needed
-        prompt = f"""
-        Extract job title and company from this posting.
-        Return as JSON: {{"title": "...", "company": "..."}}
-        
-        Text: {content[:500]}
-        """
+    def generate_recruiter_email(self, name: str, company: str) -> str:
+        """Generate probable recruiter email from name"""
         
         try:
-            result = self._get_ai_response(prompt, "gpt-3.5-turbo")
-            match = re.search(r'\{.*\}', result, re.DOTALL)
-            if match:
-                return json.loads(match.group())
+            first, last = name.lower().split()
+            company_clean = company.lower().replace(' ', '').replace('.', '')
+            
+            # Common recruiter email formats
+            formats = [
+                f"{first}.{last}@{company_clean}.com",
+                f"{first}@{company_clean}.com",
+                f"{first[0]}{last}@{company_clean}.com",
+                f"{last}.{first}@{company_clean}.com",
+                f"recruiter.{first}.{last}@{company_clean}.com"
+            ]
+            
+            return formats[0]
         except:
-            pass
-        
-        return {"title": "Unknown", "company": "Unknown"}
+            return f"recruiter@{company.lower().replace(' ', '')}.com"
     
-    # ============= GET VALIDATED TARGETS WITH PROPER TYPE =============
+    # ============= LINKEDIN AUTO-CONNECT FEATURE =============
+    def connect_with_recruiter(self, recruiter: Dict, job: Dict) -> bool:
+        """
+        Send LinkedIn connection request to recruiter
+        Returns True if successful
+        """
+        
+        if not SELENIUM_AVAILABLE:
+            print("⚠️ Selenium not installed. Saving for manual connection.")
+            return self._save_manual_connection(recruiter, job)
+        
+        if not self.linkedin_email or not self.linkedin_password:
+            print("⚠️ LinkedIn credentials not found. Saving for manual connection.")
+            return self._save_manual_connection(recruiter, job)
+        
+        # Check daily limit
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_connections = [c for c in self.connections if c.get('date') == today]
+        
+        if len(today_connections) >= self.max_connections_per_day:
+            print(f"⚠️ Daily connection limit reached ({self.max_connections_per_day})")
+            return self._save_manual_connection(recruiter, job)
+        
+        print(f"🔌 Attempting to connect with {recruiter['name']} on LinkedIn...")
+        
+        # Custom message for connection
+        message = f"""Hi {recruiter['name']},
+
+I came across the {job['title']} position at {recruiter['company']} and I'm very interested. I'm a Technical Lead with 6.5+ years of experience in Modern C++ and distributed systems.
+
+Would love to connect and learn more about opportunities at {recruiter['company']}.
+
+Thanks,
+Anil Kumar"""
+
+        # Setup Chrome options for headless browsing
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run in background
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        
+        driver = None
+        try:
+            # Initialize driver
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            wait = WebDriverWait(driver, 20)
+            
+            # Step 1: Login to LinkedIn
+            print("   📝 Logging into LinkedIn...")
+            driver.get("https://www.linkedin.com/login")
+            time.sleep(2)
+            
+            # Enter email
+            email_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
+            email_field.send_keys(self.linkedin_email)
+            
+            # Enter password
+            password_field = driver.find_element(By.ID, "password")
+            password_field.send_keys(self.linkedin_password)
+            
+            # Submit
+            password_field.send_keys(Keys.RETURN)
+            time.sleep(3)
+            
+            # Check if login successful
+            if "feed" not in driver.current_url:
+                print("❌ LinkedIn login failed")
+                return self._save_manual_connection(recruiter, job)
+            
+            print("   ✅ Logged in successfully")
+            
+            # Step 2: Go to recruiter profile
+            print(f"   👤 Visiting profile: {recruiter['name']}")
+            driver.get(recruiter['profile_url'])
+            time.sleep(3)
+            
+            # Step 3: Click Connect button
+            try:
+                # Try multiple possible button texts
+                connect_selectors = [
+                    "button[aria-label*='Invite']",
+                    "button[aria-label*='Connect']",
+                    "button:contains('Connect')",
+                    "//button[contains(@aria-label, 'Invite')]",
+                    "//button[contains(@aria-label, 'Connect')]"
+                ]
+                
+                connect_button = None
+                for selector in connect_selectors:
+                    try:
+                        if selector.startswith("//"):
+                            connect_button = driver.find_element(By.XPATH, selector)
+                        else:
+                            connect_button = driver.find_element(By.CSS_SELECTOR, selector)
+                        if connect_button:
+                            break
+                    except:
+                        continue
+                
+                if not connect_button:
+                    print("   ⚠️ Connect button not found (maybe already connected)")
+                    return self._save_manual_connection(recruiter, job, "already_connected")
+                
+                driver.execute_script("arguments[0].click();", connect_button)
+                time.sleep(2)
+                
+                # Step 4: Add note
+                try:
+                    add_note_button = driver.find_element(By.XPATH, "//button[contains(@aria-label, 'Add a note')]")
+                    driver.execute_script("arguments[0].click();", add_note_button)
+                    time.sleep(1)
+                    
+                    # Find note textarea
+                    note_area = driver.find_element(By.ID, "custom-message")
+                    note_area.send_keys(message)
+                    time.sleep(1)
+                    
+                    # Send
+                    send_button = driver.find_element(By.XPATH, "//button[contains(@aria-label, 'Send invitation')]")
+                    driver.execute_script("arguments[0].click();", send_button)
+                    
+                    print(f"   ✅ Connection request sent with note")
+                    
+                except:
+                    # If no note option, just send without note
+                    try:
+                        send_button = driver.find_element(By.XPATH, "//button[contains(@aria-label, 'Send')]")
+                        driver.execute_script("arguments[0].click();", send_button)
+                        print(f"   ✅ Connection request sent (no note)")
+                    except:
+                        print("   ⚠️ Could not send connection")
+                        return False
+                
+                # Record successful connection
+                connection_record = {
+                    "recruiter_name": recruiter['name'],
+                    "recruiter_profile": recruiter['profile_url'],
+                    "company": recruiter['company'],
+                    "job_title": job['title'],
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "message": message,
+                    "status": "connected"
+                }
+                self.connections.append(connection_record)
+                self._save_json(self.connections_file, self.connections)
+                
+                return True
+                
+            except Exception as e:
+                print(f"   ❌ Error during connection: {e}")
+                return self._save_manual_connection(recruiter, job)
+        
+        except Exception as e:
+            print(f"❌ LinkedIn automation error: {e}")
+            return self._save_manual_connection(recruiter, job)
+        
+        finally:
+            if driver:
+                driver.quit()
+    
+    def _save_manual_connection(self, recruiter: Dict, job: Dict, status: str = "pending") -> bool:
+        """Save connection for manual sending"""
+        
+        connection_record = {
+            "recruiter_name": recruiter['name'],
+            "recruiter_profile": recruiter['profile_url'],
+            "company": recruiter['company'],
+            "job_title": job['title'],
+            "email": recruiter.get('email'),
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "status": status,
+            "manual": True,
+            "message_template": f"""Hi {recruiter['name']},
+
+I came across the {job['title']} position at {recruiter['company']} and I'm very interested. I'm a Technical Lead with 6.5+ years of experience in Modern C++ and distributed systems.
+
+Would love to connect and learn more about opportunities at {recruiter['company']}.
+
+Thanks,
+Anil Kumar"""
+        }
+        
+        self.connections.append(connection_record)
+        self._save_json(self.connections_file, self.connections)
+        
+        print(f"📝 Saved for manual connection: {recruiter['profile_url']}")
+        return True
+    
+    # ============= SEND LINKEDIN DM =============
+    def send_linkedin_dm(self, recruiter: Dict, job: Dict) -> bool:
+        """Save DM for manual sending"""
+        
+        message_template = f"""Hi {recruiter['name']},
+
+I hope this message finds you well. I came across the {job['title']} position at {recruiter['company']} and I'm very interested.
+
+I'm a Technical Lead at Sabre/Coforge with 6.5+ years of experience in Modern C++, distributed systems, and low-latency applications. I recently led an optimization initiative that improved system performance by 30%.
+
+Would it be possible to connect and discuss how my experience might align with your team's needs?
+
+Best regards,
+Anil Kumar"""
+        
+        dm_record = {
+            "recruiter_name": recruiter['name'],
+            "recruiter_profile": recruiter['profile_url'],
+            "company": recruiter['company'],
+            "job_title": job['title'],
+            "message": message_template,
+            "status": "pending",
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "email": recruiter.get('email')
+        }
+        
+        self.linkedin_dms.append(dm_record)
+        self._save_json(self.linkedin_dms_file, self.linkedin_dms)
+        
+        return True
+    
+    # ============= GET VALIDATED TARGETS (WITH CONNECT) =============
     def get_valid_targets(self, job: Dict) -> List[Dict]:
         """
-        Get validated email targets for a job
-        Returns list of validated targets with confidence scores and type
+        Get validated email targets - with LinkedIn connection
         """
         
         targets = []
@@ -448,23 +451,47 @@ class JobHunter3000:
         cache_key = f"{company}_{job['title']}"
         if cache_key in self.validated_emails:
             cached = self.validated_emails[cache_key]
-            if datetime.now().timestamp() - cached.get('timestamp', 0) < 86400:  # 24 hours
-                print(f"📦 Using cached email for {company}")
+            if datetime.now().timestamp() - cached.get('timestamp', 0) < 86400:
+                print(f"📦 Using cached emails for {company}")
                 return cached.get('targets', [])
         
-        # Strategy 1: Find human emails from job content
-        human_emails = self.find_human_emails_from_content(job)
-        for email_data in human_emails:
-            targets.append({
-                'email': email_data['email'],
-                'name': email_data.get('name'),
-                'confidence': email_data['confidence'],
-                'type': email_data['type'],  # 'human' or 'generic'
-                'source': email_data['source'],
-                'priority': 1 if email_data['type'] == 'human' else 2
-            })
+        # STRATEGY 1: Find recruiters on LinkedIn (BEST)
+        recruiters = self.find_linkedin_recruiters(company, job['title'])
+        for rec in recruiters:
+            # Try to connect on LinkedIn
+            self.connect_with_recruiter(rec, job)
+            
+            # Also save for DM
+            self.send_linkedin_dm(rec, job)
+            
+            # Add email if available
+            validation = self.validate_email_ultimate(rec['email'], company)
+            if validation['valid']:
+                targets.append({
+                    'email': rec['email'],
+                    'name': rec['name'],
+                    'confidence': 95,
+                    'type': 'recruiter',
+                    'source': 'linkedin',
+                    'profile_url': rec['profile_url'],
+                    'profile_id': rec.get('profile_id'),
+                    'priority': 1
+                })
         
-        # Remove duplicates by email
+        # STRATEGY 2: Human emails from job content
+        if not targets:
+            human_emails = self.find_human_emails_from_content(job)
+            for email_data in human_emails:
+                targets.append({
+                    'email': email_data['email'],
+                    'name': email_data.get('name'),
+                    'confidence': email_data['confidence'],
+                    'type': 'human',
+                    'source': email_data['source'],
+                    'priority': 2
+                })
+        
+        # Remove duplicates
         seen = set()
         unique_targets = []
         for t in targets:
@@ -472,8 +499,8 @@ class JobHunter3000:
                 seen.add(t['email'])
                 unique_targets.append(t)
         
-        # Sort by priority (human first) and confidence
-        unique_targets.sort(key=lambda x: (x['priority'], -x['confidence']))
+        # Sort by priority
+        unique_targets.sort(key=lambda x: x['priority'])
         
         # Cache results
         self.validated_emails[cache_key] = {
@@ -484,439 +511,120 @@ class JobHunter3000:
         
         return unique_targets
     
-    # ============= IMPROVED RESUME GENERATION =============
-    def generate_professional_resume(self, job: Dict) -> str:
-        """Generate beautifully formatted resume PDF"""
+    # ============= GENERATE REPORTS =============
+    def generate_connection_report(self):
+        """Generate HTML report of LinkedIn connections"""
         
-        custom_path = f"custom_resumes/Anil_Kumar_{job['company'].replace(' ', '_')}.pdf"
-        os.makedirs("custom_resumes", exist_ok=True)
+        pending_connections = [c for c in self.connections if c.get('status') == 'pending']
+        successful_connections = [c for c in self.connections if c.get('status') == 'connected']
         
-        # Create PDF with better formatting
-        doc = SimpleDocTemplate(
-            custom_path,
-            pagesize=letter,
-            rightMargin=72,
-            leftMargin=72,
-            topMargin=72,
-            bottomMargin=72
-        )
-        
-        styles = getSampleStyleSheet()
-        story = []
-        
-        # Custom styles for better formatting
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontName='Helvetica-Bold',
-            fontSize=24,
-            spaceAfter=6,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#1a4d8c')
-        )
-        
-        subtitle_style = ParagraphStyle(
-            'CustomSubtitle',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=12,
-            textColor=colors.HexColor('#555555'),
-            spaceAfter=12,
-            alignment=TA_LEFT
-        )
-        
-        contact_style = ParagraphStyle(
-            'ContactStyle',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=10,
-            textColor=colors.HexColor('#777777'),
-            spaceAfter=20,
-            alignment=TA_LEFT
-        )
-        
-        section_style = ParagraphStyle(
-            'SectionStyle',
-            parent=styles['Heading2'],
-            fontName='Helvetica-Bold',
-            fontSize=14,
-            spaceBefore=12,
-            spaceAfter=6,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#1a4d8c'),
-            borderWidth=1,
-            borderColor=colors.HexColor('#cccccc'),
-            borderPadding=(0, 0, 3, 0)
-        )
-        
-        bullet_style = ParagraphStyle(
-            'BulletStyle',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=10,
-            leftIndent=20,
-            spaceAfter=4,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#333333')
-        )
-        
-        normal_style = ParagraphStyle(
-            'NormalStyle',
-            parent=styles['Normal'],
-            fontName='Helvetica',
-            fontSize=10,
-            spaceAfter=6,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#444444'),
-            leading=14
-        )
-        
-        # Header with better formatting
-        story.append(Paragraph("ANIL KUMAR", title_style))
-        story.append(Paragraph("Senior C++ Engineer | Distributed Systems | Low Latency", subtitle_style))
-        story.append(Paragraph(
-            "✉️ anilkruz@gmail.com  |  📍 Bangalore, India  |  📱 +91-9557846156  |  🔗 linkedin.com/in/anil-kumar",
-            contact_style
-        ))
-        
-        # Summary section
-        story.append(Paragraph("PROFESSIONAL SUMMARY", section_style))
-        summary_text = f"""Results-driven Technical Lead with 6.5+ years of experience at Sabre/Coforge, 
-        specializing in Modern C++ (11/14/17/20), distributed systems, and performance optimization. 
-        Proven track record of delivering 30% performance improvement through multi-threaded optimization. 
-        Seeking to leverage expertise at {job['company']} to build high-performance, scalable systems."""
-        story.append(Paragraph(summary_text, normal_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Technical Skills with better formatting
-        story.append(Paragraph("TECHNICAL SKILLS", section_style))
-        skills_data = [
-            ["Programming:", "Modern C++ (11/14/17/20), C, STL, Boost"],
-            ["Systems:", "Linux, IPC, TCP/IP, Socket Programming"],
-            ["Concurrency:", "Multithreading, Mutex, Condition Variables, Thread Pools"],
-            ["Tools:", "GDB, Valgrind, perf, Git, CMake, Google Test"],
-            ["Debugging:", "AddressSanitizer, ThreadSanitizer, Core Dump Analysis"],
-            ["Domains:", "Telecom (Amdocs), Travel (Sabre), Distributed Systems"]
-        ]
-        
-        for category, items in skills_data:
-            story.append(Paragraph(f"• <b>{category}</b>  {items}", bullet_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Experience with better formatting
-        story.append(Paragraph("PROFESSIONAL EXPERIENCE", section_style))
-        
-        # Technical Lead
-        story.append(Paragraph("<b>Technical Lead</b> - Coforge (Client: Sabre)", styles['Heading3']))
-        story.append(Paragraph("<i>Nov 2025 - Present | Bangalore</i>", styles['Italic']))
-        story.append(Paragraph("• Leading development of core C++ modules for large-scale airline reservation systems", bullet_style))
-        story.append(Paragraph("• Designed and optimized multi-threaded backend components, achieved <b>30% performance improvement</b>", bullet_style))
-        story.append(Paragraph("• Resolved complex race conditions in long-running Linux services using GDB and sanitizers", bullet_style))
-        story.append(Paragraph("• Improved performance-critical paths through CPU profiling (perf) and memory optimization", bullet_style))
-        story.append(Spacer(1, 0.05*inch))
-        
-        # Senior Consultant
-        story.append(Paragraph("<b>Senior Consultant</b> - Capgemini", styles['Heading3']))
-        story.append(Paragraph("<i>Mar 2025 - Nov 2025 | Gurugram</i>", styles['Italic']))
-        story.append(Paragraph("• Developed high-availability C++ backend modules for enterprise clients", bullet_style))
-        story.append(Paragraph("• Modernized legacy codebase with C++17 features, improving maintainability", bullet_style))
-        story.append(Spacer(1, 0.05*inch))
-        
-        # SDE-2
-        story.append(Paragraph("<b>SDE-2</b> - CSG", styles['Heading3']))
-        story.append(Paragraph("<i>Jun 2022 - Mar 2025 | Bangalore</i>", styles['Italic']))
-        story.append(Paragraph("• Built scalable C++ backend services for high-throughput transaction processing", bullet_style))
-        story.append(Paragraph("• Implemented concurrency control mechanisms in distributed modules", bullet_style))
-        story.append(Spacer(1, 0.05*inch))
-        
-        # Amdocs
-        story.append(Paragraph("<b>Software Developer</b> - Amdocs", styles['Heading3']))
-        story.append(Paragraph("<i>Jun 2019 - Jun 2022 | Pune</i>", styles['Italic']))
-        story.append(Paragraph("• Developed Linux-based telecom systems using Modern C++ (C++11/14)", bullet_style))
-        story.append(Paragraph("• Implemented IPC mechanisms for high-throughput environments", bullet_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Education
-        story.append(Paragraph("EDUCATION", section_style))
-        story.append(Paragraph("<b>Master's Degree in Computer Science</b> - Thapar Institute of Engineering and Technology", normal_style))
-        
-        # Build PDF
-        doc.build(story)
-        print(f"✅ Resume generated: {custom_path}")
-        return custom_path
-    
-    # ============= CLEAN JOB TITLE =============
-    def clean_job_title(self, title: str) -> str:
-        """Clean job title - remove extra text"""
-        title = re.sub(r'Jobs?.*$', '', title, flags=re.IGNORECASE)
-        title = re.sub(r'Bangalore.*$', '', title, flags=re.IGNORECASE)
-        title = re.sub(r'Bengaluru.*$', '', title, flags=re.IGNORECASE)
-        title = re.sub(r'Karnataka.*$', '', title, flags=re.IGNORECASE)
-        title = re.sub(r'India.*$', '', title, flags=re.IGNORECASE)
-        title = re.sub(r'\(\d+\s+new\)', '', title)
-        return title.strip()
-    
-    # ============= GENERATE COVER LETTER =============
-    def generate_personalized_letter(self, job: Dict, name: str) -> str:
-        """Generate personalized cover letter"""
-        
-        clean_title = self.clean_job_title(job['title'])
-        
-        prompt = f"""
-        Write a professional job application email to {name} at {job['company']}:
-        
-        Position: {clean_title}
-        
-        Candidate: Anil Kumar
-        - Technical Lead at Sabre/Coforge (6.5+ years)
-        - Expertise: Modern C++, distributed systems
-        - Key achievement: 30% performance improvement
-        
-        Write 4 short paragraphs with single line breaks only.
-        Sound professional but natural.
-        """
-        
-        letter = self._get_ai_response(prompt, "gpt-3.5-turbo")
-        
-        if letter:
-            letter = re.sub(r'\n\s*\n\s*\n', '\n\n', letter)
-            letter = '\n'.join(line.rstrip() for line in letter.split('\n'))
-        
-        return letter
-    
-    def generate_cover_letter(self, job: Dict) -> str:
-        """Generate standard cover letter"""
-        
-        clean_title = self.clean_job_title(job['title'])
-        
-        prompt = f"""
-        Write a professional job application email for {job['company']}:
-        
-        Position: {clean_title}
-        
-        Candidate: Anil Kumar
-        - Technical Lead at Sabre/Coforge (6.5+ years)
-        - Expertise: Modern C++, distributed systems
-        - Key achievement: 30% performance improvement
-        
-        Write 4 short paragraphs with single line breaks only.
-        Sound professional but natural.
-        """
-        
-        letter = self._get_ai_response(prompt, "gpt-3.5-turbo")
-        
-        if letter:
-            letter = re.sub(r'\n\s*\n\s*\n', '\n\n', letter)
-            letter = '\n'.join(line.rstrip() for line in letter.split('\n'))
-        
-        return letter
-    
-    # ============= SEND EMAIL =============
-    def send_email(self, job: Dict, to_email: str, cover_letter: str, resume_path: str) -> bool:
-        """Send email with attachment"""
-        
-        msg = MIMEMultipart()
-        msg["From"] = self.email
-        msg["To"] = to_email
-        
-        # Clean subject
-        clean_title = self.clean_job_title(job['title'])
-        msg["Subject"] = f"Application for {clean_title} - Anil Kumar - 6.5+ years C++"
-        
-        # Email body
-        html_body = f"""
+        html = """
         <!DOCTYPE html>
         <html>
         <head>
-            <meta charset="UTF-8">
+            <title>LinkedIn Connections Report</title>
             <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
-                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                .signature {{ margin-top: 20px; color: #666; }}
+                body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+                h1, h2 { color: #1a4d8c; }
+                .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }
+                .stat-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                .stat-number { font-size: 36px; font-weight: bold; color: #1a4d8c; }
+                .connection-card { 
+                    background: white; 
+                    border-radius: 10px; 
+                    padding: 20px; 
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .success { border-left: 5px solid #28a745; }
+                .pending { border-left: 5px solid #ffc107; }
+                .name { font-size: 18px; font-weight: bold; color: #1a4d8c; }
+                .company { color: #666; }
+                .profile-link { 
+                    background: #1a4d8c; 
+                    color: white; 
+                    padding: 5px 10px; 
+                    text-decoration: none; 
+                    border-radius: 5px;
+                    display: inline-block;
+                    margin: 10px 0;
+                }
+                .message { 
+                    background: #f8f9fa; 
+                    padding: 15px; 
+                    border-radius: 5px;
+                    white-space: pre-wrap;
+                    margin: 10px 0;
+                }
             </style>
         </head>
         <body>
-            <div class="container">
-                {cover_letter.replace(chr(10), '<br><br>')}
-                <div class="signature">
-                    <hr style="border: none; border-top: 1px solid #eee;">
-                    <p style="font-size: 12px;">Anil Kumar | +91-9557846156 | anilkruz@gmail.com</p>
+            <h1>🔗 LinkedIn Connections Report</h1>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number">{}</div>
+                    <div>Total Connections</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{}</div>
+                    <div>Successful</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{}</div>
+                    <div>Pending</div>
                 </div>
             </div>
+            
+            <h2>✅ Successful Connections</h2>
+        """.format(
+            len(self.connections),
+            len(successful_connections),
+            len(pending_connections)
+        )
+        
+        for conn in successful_connections[-5:]:
+            html += f"""
+            <div class="connection-card success">
+                <div class="name">{conn['recruiter_name']}</div>
+                <div class="company">{conn['company']} - {conn.get('job_title', 'Unknown')}</div>
+                <a href="{conn['recruiter_profile']}" target="_blank" class="profile-link">View Profile</a>
+                <div class="message">{conn.get('message_template', conn.get('message', 'No message'))}</div>
+                <small>Connected on: {conn['date']} at {conn.get('time', '')}</small>
+            </div>
+            """
+        
+        html += """
+            <h2>⏳ Pending Connections</h2>
+        """
+        
+        for conn in pending_connections[-10:]:
+            html += f"""
+            <div class="connection-card pending">
+                <div class="name">{conn['recruiter_name']}</div>
+                <div class="company">{conn['company']} - {conn.get('job_title', 'Unknown')}</div>
+                <a href="{conn['recruiter_profile']}" target="_blank" class="profile-link">Connect Manually</a>
+                <div class="message">{conn.get('message_template', conn.get('message', 'No message'))}</div>
+                <small>Added: {conn['date']} at {conn.get('time', '')}</small>
+            </div>
+            """
+        
+        html += """
         </body>
         </html>
         """
         
-        msg.attach(MIMEText(html_body, "html"))
+        with open("linkedin_connections.html", "w") as f:
+            f.write(html)
         
-        # Attach resume
-        try:
-            with open(resume_path, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header("Content-Disposition", f"attachment; filename=Anil_Kumar_Resume.pdf")
-                msg.attach(part)
-        except Exception as e:
-            print(f"❌ Resume attachment failed: {e}")
-            return False
-        
-        # Send
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(self.email, self.app_password)
-                server.send_message(msg)
-            print(f"✅ Email sent to {to_email}")
-            return True
-        except Exception as e:
-            print(f"❌ Email send failed: {e}")
-            return False
+        print("✅ LinkedIn connections report: linkedin_connections.html")
     
-    # ============= TRACK APPLICATION =============
-    def track_application(self, job: Dict, target: Dict):
-        """Track successful application"""
-        
-        job_key = f"{job['company']}_{job['title']}"
-        
-        self.responses[job_key] = {
-            "company": job["company"],
-            "job_title": job["title"],
-            "sent_date": datetime.now().strftime("%Y-%m-%d"),
-            "target_email": target["email"],
-            "target_name": target.get("name"),
-            "confidence": target["confidence"],
-            "type": target["type"],  # 'human' or 'generic'
-            "status": "applied"
-        }
-        
-        self._save_json(self.responses_file, self.responses)
-        
-        # Also add to applied jobs
-        self.applied_jobs.append({
-            "company": job["company"],
-            "title": job["title"],
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "email": target["email"],
-            "type": target["type"]
-        })
-        self._save_json(self.applied_jobs_file, self.applied_jobs)
-    
-    # ============= SCHEDULE FOLLOW-UP =============
-    def schedule_follow_up(self, job: Dict, days: int = 7):
-        """Schedule follow-up email"""
-        
-        follow_up = {
-            "company": job["company"],
-            "job_title": job["title"],
-            "sent_date": datetime.now().strftime("%Y-%m-%d"),
-            "follow_up_date": (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d"),
-            "status": "scheduled"
-        }
-        
-        self.follow_ups.append(follow_up)
-        self._save_json(self.follow_ups_file, self.follow_ups)
-        print(f"📅 Follow-up scheduled for {follow_up['follow_up_date']}")
-    
-    # ============= SEND FOLLOW-UPS =============
-    def send_follow_ups(self):
-        """Check and send scheduled follow-ups"""
-        
-        today = datetime.now().strftime("%Y-%m-%d")
-        sent = 0
-        
-        for fu in self.follow_ups:
-            if fu["status"] == "scheduled" and fu["follow_up_date"] <= today:
-                
-                prompt = f"""
-                Write a polite follow-up email for:
-                
-                Company: {fu['company']}
-                Position: {fu['job_title']}
-                Original Application: {fu['sent_date']}
-                
-                Keep it short, professional, and not desperate.
-                """
-                
-                follow_up_email = self._get_ai_response(prompt, "gpt-3.5-turbo")
-                
-                # Fix spacing
-                follow_up_email = re.sub(r'\n\s*\n\s*\n', '\n\n', follow_up_email)
-                
-                # Send to self as reminder
-                msg = MIMEText(follow_up_email)
-                msg["From"] = self.email
-                msg["To"] = self.email
-                msg["Subject"] = f"Follow-up: {fu['company']} - {fu['job_title']}"
-                
-                try:
-                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                        server.login(self.email, self.app_password)
-                        server.send_message(msg)
-                    
-                    fu["status"] = "follow_up_sent"
-                    fu["follow_up_sent_date"] = today
-                    sent += 1
-                    print(f"✅ Follow-up reminder sent for {fu['company']}")
-                except:
-                    continue
-        
-        self._save_json(self.follow_ups_file, self.follow_ups)
-        return sent
-    
-    # ============= SEND APPLICATION (MAIN) =============
-    def send_application_zero_bounce(self, job: Dict) -> bool:
-        """
-        Send application with zero bounce guarantee
-        """
-        
-        print(f"\n📌 Processing: {job['title']} at {job['company']}")
-        
-        # Get validated targets
-        targets = self.get_valid_targets(job)
-        
-        if not targets:
-            print(f"❌ No valid email targets found for {job['company']}")
-            
-            self.manual_review.append({
-                'company': job['company'],
-                'job_title': job['title'],
-                'url': job.get('url', ''),
-                'date': datetime.now().strftime('%Y-%m-%d'),
-                'status': 'needs_manual_review',
-                'reason': 'No valid emails found'
-            })
-            self._save_json(self.manual_review_file, self.manual_review)
-            return False
-        
-        # Try each target (prioritize human emails)
-        for target in targets[:2]:
-            email_type = "👤 HUMAN" if target['type'] == 'human' else "📧 GENERIC"
-            print(f"📧 Trying {email_type}: {target['email']} (confidence: {target['confidence']}%)")
-            
-            if target.get('name'):
-                cover_letter = self.generate_personalized_letter(job, target['name'])
-            else:
-                cover_letter = self.generate_cover_letter(job)
-            
-            resume_path = self.generate_professional_resume(job)
-            
-            if self.send_email(job, target['email'], cover_letter, resume_path):
-                print(f"✅ Email sent to {target['email']}")
-                
-                self.track_application(job, target)
-                self.schedule_follow_up(job)
-                
-                return True
-        
-        print(f"❌ All targets failed for {job['company']}")
-        return False
-    
-    # ============= MAIN FUNCTION =============
+    # ============= MAIN FUNCTION (UPDATED) =============
     def run_daily_hunt(self):
         """Main execution function"""
         
         print("="*70)
-        print("🚀 JOB HUNTER 3000 - ZERO BOUNCE EDITION")
+        print("🚀 JOB HUNTER 3000 - LINKEDIN AUTO-CONNECT EDITION")
         print(f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("="*70)
         
@@ -933,58 +641,38 @@ class JobHunter3000:
         
         for i, job in enumerate(jobs_to_apply, 1):
             print(f"\n{'='*40}")
-            print(f"Job {i}/{len(jobs_to_apply)}")
+            print(f"Job {i}/{len(jobs_to_apply)}: {job['title']} at {job['company']}")
             
+            # This will now also find recruiters and send connection requests
             if self.send_application_zero_bounce(job):
                 successful += 1
             
+            # Add delay between jobs
             if i < len(jobs_to_apply):
-                print("⏳ Waiting 30 seconds...")
-                time.sleep(30)
+                print("⏳ Waiting 60 seconds...")
+                time.sleep(60)
         
-        # Send follow-ups
-        follow_sent = self.send_follow_ups()
-        
-        # Generate basic dashboard
+        # Generate reports
+        self.generate_connection_report()
+        self.generate_recruiter_report()
         self.generate_manual_review_html()
         
         # Advanced features
-        print("\n📊 Generating advanced analytics...")
-        try:
-            analytics = self.advanced.response_analytics()
-            if analytics and analytics.get('avg_match_score'):
-                print(f"   Avg Match Score: {analytics['avg_match_score']}%")
-                print(f"   Follow-up Rate: {analytics['follow_up_rate']}%")
-        except Exception as e:
-            print(f"   ⚠️ Analytics failed: {e}")
-
-        # Research top companies
-        for job in jobs_to_apply[:2]:
-            print(f"\n🔍 Researching {job['company']}...")
-            try:
-                research = self.advanced.research_company(job['company'])
-                with open(f"research_{job['company'].replace(' ', '_')}.txt", 'w') as f:
-                    f.write(research)
-                print(f"   ✅ Research saved")
-            except Exception as e:
-                print(f"   ❌ Research failed: {e}")
-
-        # Generate advanced dashboard
         try:
             self.advanced.generate_advanced_dashboard()
-            print("✅ Advanced dashboard generated")
-        except Exception as e:
-            print(f"❌ Advanced dashboard failed: {e}")
-        
-        # Send daily report
-        self.send_daily_report(successful, len(jobs_to_apply))
+        except:
+            pass
         
         # Summary
+        successful_connects = len([c for c in self.connections if c.get('status') == 'connected'])
+        pending_connects = len([c for c in self.connections if c.get('status') == 'pending'])
+        
         print(f"\n{'='*70}")
         print(f"✅ Daily hunt completed!")
-        print(f"   📨 Successfully sent: {successful}/{len(jobs_to_apply)}")
-        print(f"   📅 Follow-ups sent: {follow_sent}")
-        print(f"   📝 Manual review: {len([r for r in self.manual_review if r.get('status') == 'needs_manual_review'])}")
+        print(f"   📨 Emails sent: {successful}/{len(jobs_to_apply)}")
+        print(f"   🔗 LinkedIn connections: {successful_connects} successful, {pending_connects} pending")
+        print(f"   📬 DMs pending: {len([dm for dm in self.linkedin_dms if dm['status'] == 'pending'])}")
+        print(f"   📊 Reports: linkedin_connections.html, linkedin_outreach.html")
         print(f"{'='*70}")
 
 if __name__ == "__main__":
