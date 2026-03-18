@@ -8,5 +8,35 @@
     "confidence": 95,
     "type": "recruiter",
     "status": "applied"
+  },
+  "Infogain_Distributed systems Developer - C++ Microservices Linux Docker": {
+    "company": "Infogain",
+    "job_title": "Distributed systems Developer - C++ Microservices Linux Docker",
+    "sent_date": "2026-03-18",
+    "target_email": "priya.sharma@infogain.com",
+    "target_name": "Priya Sharma",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
+  },
+  "Infogain_Senior Systems Engineer - C++": {
+    "company": "Infogain",
+    "job_title": "Senior Systems Engineer - C++",
+    "sent_date": "2026-03-18",
+    "target_email": "priya.sharma@infogain.com",
+    "target_name": "Priya Sharma",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
+  },
+  "AXISCADES_Software Eng With Qt And Gui Development Experience": {
+    "company": "AXISCADES",
+    "job_title": "Software Eng With Qt And Gui Development Experience",
+    "sent_date": "2026-03-18",
+    "target_email": "recruiter@axiscades.com",
+    "target_name": "Unknown",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
   }
 }

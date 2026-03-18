@@ -5,5 +5,26 @@
     "date": "2026-03-17",
     "email": "quest.global@questglobal.com",
     "type": "recruiter"
+  },
+  {
+    "company": "Infogain",
+    "title": "Distributed systems Developer - C++ Microservices Linux Docker",
+    "date": "2026-03-18",
+    "email": "priya.sharma@infogain.com",
+    "type": "recruiter"
+  },
+  {
+    "company": "Infogain",
+    "title": "Senior Systems Engineer - C++",
+    "date": "2026-03-18",
+    "email": "priya.sharma@infogain.com",
+    "type": "recruiter"
+  },
+  {
+    "company": "AXISCADES",
+    "title": "Software Eng With Qt And Gui Development Experience",
+    "date": "2026-03-18",
+    "email": "recruiter@axiscades.com",
+    "type": "recruiter"
   }
 ]
