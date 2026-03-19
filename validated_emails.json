@@ -376,5 +376,94 @@
       }
     ],
     "timestamp": 1773811102.612271
+  },
+  "Uplers_Embedded Software Developer (C++)": {
+    "targets": [
+      {
+        "email": "mazahar.shariff@uplers.com",
+        "name": "Mazahar Shariff",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/mazahar-shariff-8457911ab",
+        "profile_id": "mazahar-shariff-8457911ab",
+        "priority": 1
+      },
+      {
+        "email": "shakeb.raza@uplers.com",
+        "name": "Shakeb Raza",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/shakeb-raza",
+        "profile_id": "shakeb-raza",
+        "priority": 1
+      },
+      {
+        "email": "shelly.biswas@uplers.com",
+        "name": "Shelly Biswas",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/shellybiswas",
+        "profile_id": "shellybiswas",
+        "priority": 1
+      },
+      {
+        "email": "kritika.khanna@uplers.com",
+        "name": "Kritika Khanna",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/kritika-khanna-372242270",
+        "profile_id": "kritika-khanna-372242270",
+        "priority": 1
+      },
+      {
+        "email": "vidhi.mistry@uplers.com",
+        "name": "Vidhi Mistry",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/vidhimistry98",
+        "profile_id": "vidhimistry98",
+        "priority": 1
+      },
+      {
+        "email": "deeksha.karamchandani@uplers.com",
+        "name": "Deeksha Karamchandani",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/deeksha-karamchandani",
+        "profile_id": "deeksha-karamchandani",
+        "priority": 1
+      },
+      {
+        "email": "shivam.karnwal@uplers.com",
+        "name": "Shivam Karnwal",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/shivam-karnwal",
+        "profile_id": "shivam-karnwal",
+        "priority": 1
+      },
+      {
+        "email": "simranjeet.kaur@uplers.com",
+        "name": "Simranjeet Kaur",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/simranjeet-kaur-048b8222a/es?trk=people-guest_people_search-card",
+        "profile_id": "simranjeet-kaur-048b8222a",
+        "priority": 1
+      }
+    ],
+    "timestamp": 1773897114.594187
+  },
+  "Nexstem_C++ Backend Engineer": {
+    "targets": [],
+    "timestamp": 1773897243.882614
   }
 }

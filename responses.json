@@ -38,5 +38,15 @@
     "confidence": 95,
     "type": "recruiter",
     "status": "applied"
+  },
+  "Uplers_Embedded Software Developer (C++)": {
+    "company": "Uplers",
+    "job_title": "Embedded Software Developer (C++)",
+    "sent_date": "2026-03-19",
+    "target_email": "mazahar.shariff@uplers.com",
+    "target_name": "Mazahar Shariff",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
   }
 }

@@ -14,5 +14,13 @@
     "date": "2026-03-17",
     "status": "needs_manual_review",
     "reason": "No valid emails found"
+  },
+  {
+    "company": "Nexstem",
+    "job_title": "C++ Backend Engineer",
+    "url": "",
+    "date": "2026-03-19",
+    "status": "needs_manual_review",
+    "reason": "No valid emails found"
   }
 ]
