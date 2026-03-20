@@ -465,5 +465,350 @@
   "Nexstem_C++ Backend Engineer": {
     "targets": [],
     "timestamp": 1773897243.882614
+  },
+  "Cisco_Senior C++ Developer - Distributed Systems": {
+    "targets": [
+      {
+        "email": "ravi.kiran@cisco.com",
+        "name": "Ravi Kiran",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/ravi-kiran-651b8a43",
+        "profile_id": "ravi-kiran-651b8a43",
+        "priority": 1
+      },
+      {
+        "email": "priyadharshini.manavalan@cisco.com",
+        "name": "Priyadharshini Manavalan",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/priyadharshini-manavalan-100230118",
+        "profile_id": "priyadharshini-manavalan-100230118",
+        "priority": 1
+      },
+      {
+        "email": "priyanka.bhagat@cisco.com",
+        "name": "Priyanka Bhagat",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/pribhagat",
+        "profile_id": "pribhagat",
+        "priority": 1
+      },
+      {
+        "email": "amy.nguyen@cisco.com",
+        "name": "Amy Nguyen",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/avn002",
+        "profile_id": "avn002",
+        "priority": 1
+      },
+      {
+        "email": "tyler.smith@cisco.com",
+        "name": "Tyler Smith",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/tyler-smith-5a5454235",
+        "profile_id": "tyler-smith-5a5454235",
+        "priority": 1
+      },
+      {
+        "email": "jen.goetz@cisco.com",
+        "name": "Jen Goetz",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/jennifer-ricegoetz",
+        "profile_id": "jennifer-ricegoetz",
+        "priority": 1
+      },
+      {
+        "email": "amy.cable@cisco.com",
+        "name": "Amy Cable",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/amycable",
+        "profile_id": "amycable",
+        "priority": 1
+      },
+      {
+        "email": "lisa.penick@cisco.com",
+        "name": "Lisa Penick",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/johnlisa22",
+        "profile_id": "johnlisa22",
+        "priority": 1
+      },
+      {
+        "email": "terry.johnson@cisco.com",
+        "name": "Terry Johnson",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/terry-johnson-4002845",
+        "profile_id": "terry-johnson-4002845",
+        "priority": 1
+      },
+      {
+        "email": "allison.paul@cisco.com",
+        "name": "Allison Paul",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/allison-paul-5a4b5084",
+        "profile_id": "allison-paul-5a4b5084",
+        "priority": 1
+      },
+      {
+        "email": "jen.smith@cisco.com",
+        "name": "Jen Smith",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/jsmith1012",
+        "profile_id": "jsmith1012",
+        "priority": 1
+      },
+      {
+        "email": "kelly.olson@cisco.com",
+        "name": "Kelly Olson",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/kellycallahanolson",
+        "profile_id": "kellycallahanolson",
+        "priority": 1
+      }
+    ],
+    "timestamp": 1773982994.798918
+  },
+  "Goldman Sachs_Lead C++ Engineer - Fintech": {
+    "targets": [
+      {
+        "email": "manya.makhija@goldmansachs.com",
+        "name": "Manya Makhija",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/manya-makhija-5768a11a3",
+        "profile_id": "manya-makhija-5768a11a3",
+        "priority": 1
+      },
+      {
+        "email": "rekha.rajan@goldmansachs.com",
+        "name": "Rekha Rajan",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/rekharajan",
+        "profile_id": "rekharajan",
+        "priority": 1
+      },
+      {
+        "email": "sayantani.nandy@goldmansachs.com",
+        "name": "Sayantani Nandy",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/sayantani-nandy-100ba174",
+        "profile_id": "sayantani-nandy-100ba174",
+        "priority": 1
+      },
+      {
+        "email": "erika.coleman@goldmansachs.com",
+        "name": "Erika Coleman",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/erikakcoleman",
+        "profile_id": "erikakcoleman",
+        "priority": 1
+      },
+      {
+        "email": "vicki.tung@goldmansachs.com",
+        "name": "Vicki Tung",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/vicki-tung-53175931",
+        "profile_id": "vicki-tung-53175931",
+        "priority": 1
+      },
+      {
+        "email": "megan.hogan@goldmansachs.com",
+        "name": "Megan Hogan",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/megan-hogan-49425118",
+        "profile_id": "megan-hogan-49425118",
+        "priority": 1
+      },
+      {
+        "email": "molly.haynes@goldmansachs.com",
+        "name": "Molly Haynes",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/molly-haynes-2406a269",
+        "profile_id": "molly-haynes-2406a269",
+        "priority": 1
+      },
+      {
+        "email": "steve.cassata@goldmansachs.com",
+        "name": "Steve Cassata",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/stevecassata/pt",
+        "profile_id": "stevecassata",
+        "priority": 1
+      },
+      {
+        "email": "mary.gratrix@goldmansachs.com",
+        "name": "Mary Gratrix",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/marygratrix",
+        "profile_id": "marygratrix",
+        "priority": 1
+      },
+      {
+        "email": "leah.harbour@goldmansachs.com",
+        "name": "Leah Harbour",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/leahharbour",
+        "profile_id": "leahharbour",
+        "priority": 1
+      }
+    ],
+    "timestamp": 1773983122.963141
+  },
+  "Microsoft_Distributed Systems Engineer": {
+    "targets": [
+      {
+        "email": "rohan.shashank@microsoft.com",
+        "name": "Rohan Shashank",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/rohan-shashank-260b6776",
+        "profile_id": "rohan-shashank-260b6776",
+        "priority": 1
+      },
+      {
+        "email": "reshma.chelur@microsoft.com",
+        "name": "Reshma Chelur",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/reshmachelur",
+        "profile_id": "reshmachelur",
+        "priority": 1
+      },
+      {
+        "email": "recruiter@microsoft.com",
+        "name": "Unknown",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://in.linkedin.com/in/abhilash-v-6459b730",
+        "profile_id": "abhilash-v-6459b730",
+        "priority": 1
+      },
+      {
+        "email": "beth.teigue@microsoft.com",
+        "name": "Beth Teigue",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/bethteigue",
+        "profile_id": "bethteigue",
+        "priority": 1
+      },
+      {
+        "email": "paul.holloway@microsoft.com",
+        "name": "Paul Holloway",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/paulholloway",
+        "profile_id": "paulholloway",
+        "priority": 1
+      },
+      {
+        "email": "nazy.krygier@microsoft.com",
+        "name": "Nazy Krygier",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/nazy-krygier-7811a12b",
+        "profile_id": "nazy-krygier-7811a12b",
+        "priority": 1
+      },
+      {
+        "email": "jessica.calabrese@microsoft.com",
+        "name": "Jessica Calabrese",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/jessica-calabrese-8789a47",
+        "profile_id": "jessica-calabrese-8789a47",
+        "priority": 1
+      },
+      {
+        "email": "chelsea.tomlinson@microsoft.com",
+        "name": "Chelsea Tomlinson",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/chelsea-tomlinson-phr-96838b12",
+        "profile_id": "chelsea-tomlinson-phr-96838b12",
+        "priority": 1
+      },
+      {
+        "email": "kelly.teitzel@microsoft.com",
+        "name": "Kelly Teitzel",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/kellyteitzel",
+        "profile_id": "kellyteitzel",
+        "priority": 1
+      },
+      {
+        "email": "justin.saxfield@microsoft.com",
+        "name": "Justin Saxfield",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/jsaxfield",
+        "profile_id": "jsaxfield",
+        "priority": 1
+      },
+      {
+        "email": "allison.ruiz@microsoft.com",
+        "name": "Allison Ruiz",
+        "confidence": 95,
+        "type": "recruiter",
+        "source": "linkedin",
+        "profile_url": "https://www.linkedin.com/in/alliruiz",
+        "profile_id": "alliruiz",
+        "priority": 1
+      }
+    ],
+    "timestamp": 1773983196.136701
   }
 }

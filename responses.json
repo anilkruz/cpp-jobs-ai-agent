@@ -48,5 +48,35 @@
     "confidence": 95,
     "type": "recruiter",
     "status": "applied"
+  },
+  "Cisco_Senior C++ Developer - Distributed Systems": {
+    "company": "Cisco",
+    "job_title": "Senior C++ Developer - Distributed Systems",
+    "sent_date": "2026-03-20",
+    "target_email": "ravi.kiran@cisco.com",
+    "target_name": "Ravi Kiran",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
+  },
+  "Goldman Sachs_Lead C++ Engineer - Fintech": {
+    "company": "Goldman Sachs",
+    "job_title": "Lead C++ Engineer - Fintech",
+    "sent_date": "2026-03-20",
+    "target_email": "manya.makhija@goldmansachs.com",
+    "target_name": "Manya Makhija",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
+  },
+  "Microsoft_Distributed Systems Engineer": {
+    "company": "Microsoft",
+    "job_title": "Distributed Systems Engineer",
+    "sent_date": "2026-03-20",
+    "target_email": "rohan.shashank@microsoft.com",
+    "target_name": "Rohan Shashank",
+    "confidence": 95,
+    "type": "recruiter",
+    "status": "applied"
   }
 }
