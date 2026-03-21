@@ -54,5 +54,26 @@
     "date": "2026-03-20",
     "email": "rohan.shashank@microsoft.com",
     "type": "recruiter"
+  },
+  {
+    "company": "Cisco",
+    "title": "Senior C++ Developer - Distributed Systems",
+    "date": "2026-03-21",
+    "email": "ravi.kiran@cisco.com",
+    "type": "recruiter"
+  },
+  {
+    "company": "Goldman Sachs",
+    "title": "Lead C++ Engineer - Fintech",
+    "date": "2026-03-21",
+    "email": "manya.makhija@goldmansachs.com",
+    "type": "recruiter"
+  },
+  {
+    "company": "Microsoft",
+    "title": "Distributed Systems Engineer",
+    "date": "2026-03-21",
+    "email": "rohan.shashank@microsoft.com",
+    "type": "recruiter"
   }
 ]
