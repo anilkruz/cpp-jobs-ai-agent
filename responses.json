@@ -52,9 +52,9 @@
   "Cisco_Senior C++ Developer - Distributed Systems": {
     "company": "Cisco",
     "job_title": "Senior C++ Developer - Distributed Systems",
-    "sent_date": "2026-03-21",
-    "target_email": "ravi.kiran@cisco.com",
-    "target_name": "Ravi Kiran",
+    "sent_date": "2026-03-22",
+    "target_email": "priyadharshini.manavalan@cisco.com",
+    "target_name": "Priyadharshini Manavalan",
     "confidence": 95,
     "type": "recruiter",
     "status": "applied"
@@ -62,9 +62,9 @@
   "Goldman Sachs_Lead C++ Engineer - Fintech": {
     "company": "Goldman Sachs",
     "job_title": "Lead C++ Engineer - Fintech",
-    "sent_date": "2026-03-21",
-    "target_email": "manya.makhija@goldmansachs.com",
-    "target_name": "Manya Makhija",
+    "sent_date": "2026-03-22",
+    "target_email": "sayantani.nandy@goldmansachs.com",
+    "target_name": "Sayantani Nandy",
     "confidence": 95,
     "type": "recruiter",
     "status": "applied"
@@ -72,7 +72,7 @@
   "Microsoft_Distributed Systems Engineer": {
     "company": "Microsoft",
     "job_title": "Distributed Systems Engineer",
-    "sent_date": "2026-03-21",
+    "sent_date": "2026-03-22",
     "target_email": "rohan.shashank@microsoft.com",
     "target_name": "Rohan Shashank",
     "confidence": 95,
